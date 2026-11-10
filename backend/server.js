@@ -1,54 +1,47 @@
-const express = require("express");
-const mongoose = require("mongoose");
-const cors = require("cors");
-const path = require("path");
-require("dotenv").config({ path: path.join(__dirname, ".env") });
-const { authLimiter, withdrawalLimiter } = require("./middleware/rateLimitMiddleware");
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+const mongoose = require('mongoose');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+const { authLimiter, withdrawalLimiter, verificationLimiter } = require('./middleware/rateLimitMiddleware');
 
 const app = express();
 
-// Middleware
 app.use(express.json());
-app.use(
-  cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
-  }),
-);
+app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173' }));
 
-// Import Routes
-const authRoutes = require("./routes/auth");
-const taskRoutes = require("./routes/task");
-const withdrawalRoutes = require("./routes/withdrawal");
-const adminRoutes = require("./routes/admin");
-const userRoutes = require("./routes/user");
-const supportRoutes = require("./routes/support");
+const authRoutes = require('./routes/auth');
+const taskRoutes = require('./routes/task');
+const withdrawalRoutes = require('./routes/withdrawal');
+const adminRoutes = require('./routes/admin');
+const userRoutes = require('./routes/user');
+const supportRoutes = require('./routes/support');
 
-// Use Routes
-app.use("/api/auth", authLimiter, authRoutes);
-app.use("/api/tasks", taskRoutes);
-app.use("/api/withdrawal", withdrawalLimiter, withdrawalRoutes);
-app.use("/api/admin", adminRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/support", supportRoutes);
+// Finding #3: Apply rate limiters consistently in server.js
+// verificationLimiter is more restrictive and applied to specific endpoint via route-level middleware in auth.js
+app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/tasks', taskRoutes);
+app.use('/api/withdrawal', withdrawalLimiter, withdrawalRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/support', supportRoutes);
 
-// Environment variables
+app.get('/', (req, res) => {
+  res.json({ message: 'Earning Platform Backend is running successfully!' });
+});
+
 const PORT = process.env.PORT || 5000;
-const MONGO_URI =
-  process.env.MONGO_URI || "mongodb://localhost:27017/earning_platform";
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/earning_platform';
 
-// MongoDB Connection
 mongoose
   .connect(MONGO_URI)
   .then(() => {
-    console.log("Connected to MongoDB successfully! 🍃");
+    console.log('Connected to MongoDB successfully! 🍃');
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT} 🚀`);
     });
   })
   .catch((err) => {
-    console.error("Database connection error:", err);
+    console.error('Database connection error:', err);
+    process.exit(1);
   });
-
-app.get("/", (req, res) => {
-  res.json({ message: "Earning Platform Backend is running successfully!" });
-});

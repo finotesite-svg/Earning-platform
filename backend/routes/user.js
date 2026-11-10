@@ -127,7 +127,14 @@ router.post("/daily-claim", async (req, res) => {
 router.get("/me/transactions", async (req, res) => {
   try {
     const query = { userId: req.user.userId };
-    const { type } = req.query;
+    const { type, page = 1, limit = 50 } = req.query;
+    
+    // Finding #6: Add pagination with default limit of 50
+    const pageNum = parseInt(page);
+    const limitNum = Math.min(parseInt(limit), 100); // Cap at 100 per page
+    const skip = (pageNum - 1) * limitNum;
+    
+    // Finding #5: Add fee_refund to valid types
     if (
       type &&
       [
@@ -137,12 +144,26 @@ router.get("/me/transactions", async (req, res) => {
         "withdrawal",
         "withdrawal_refund",
         "fee",
+        "fee_refund"
       ].includes(type)
     ) {
       query.type = type;
     }
-    const transactions = await LedgerEntry.find(query).sort({ createdAt: -1 });
-    res.json(transactions);
+    
+    const [transactions, total] = await Promise.all([
+      LedgerEntry.find(query).sort({ createdAt: -1 }).skip(skip).limit(limitNum),
+      LedgerEntry.countDocuments(query)
+    ]);
+    
+    res.json({ 
+      transactions, 
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages: Math.ceil(total / limitNum)
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: "Unable to load transactions." });
   }

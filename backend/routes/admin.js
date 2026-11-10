@@ -317,12 +317,13 @@ router.patch("/withdrawals/:id", async (req, res) => {
         amount: withdrawal.amount,
         reference: { withdrawalRequestId: withdrawal._id },
       });
+      // Finding #5: Use fee_refund type instead of withdrawal_refund for fee
       if (withdrawal.feeAmount > 0) {
         await LedgerEntry.create({
           userId: withdrawal.userId,
-          type: "withdrawal_refund",
+          type: "fee_refund",
           amount: withdrawal.feeAmount,
-          reference: { withdrawalRequestId: withdrawal._id, refundType: "fee" },
+          reference: { withdrawalRequestId: withdrawal._id },
         });
       }
       await PaymentEvent.create({
@@ -465,6 +466,14 @@ router.patch("/support/tickets/:id", async (req, res) => {
     if (!ticket) {
       return res.status(404).json({ message: "Support ticket not found." });
     }
+    // Finding #8: Add audit trail for support ticket status changes
+    await AuditLog.create({
+      adminId: req.user.userId,
+      action: "support_ticket_status_change",
+      targetType: "SupportTicket",
+      targetId: ticket._id,
+      details: { status: statusMap[status] },
+    });
     res.json({ message: "Ticket status updated.", ticket });
   } catch (error) {
     res.status(500).json({ message: "Unable to update ticket status." });
@@ -485,6 +494,14 @@ router.post("/support/tickets/:id/reply", async (req, res) => {
     if (!ticket) {
       return res.status(404).json({ message: "Support ticket not found." });
     }
+    // Finding #8: Add audit trail for support ticket replies
+    await AuditLog.create({
+      adminId: req.user.userId,
+      action: "support_ticket_reply",
+      targetType: "SupportTicket",
+      targetId: ticket._id,
+      details: { reply: reply.trim() },
+    });
     await Notification.create({
       userId: ticket.userId,
       title: "Support ticket update",
@@ -496,12 +513,34 @@ router.post("/support/tickets/:id/reply", async (req, res) => {
   }
 });
 
+// Finding #7: Add timestamp and other filtering to audit logs
 router.get("/audit-logs", async (req, res) => {
   try {
-    const logs = await AuditLog.find()
+    const { startDate, endDate, action, targetType, adminId, limit = 100 } = req.query;
+    const query = {};
+    
+    // Date range filtering
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) query.createdAt.$gte = new Date(startDate);
+      if (endDate) query.createdAt.$lte = new Date(endDate);
+    }
+    
+    // Action filtering
+    if (action) query.action = action;
+    
+    // Target type filtering
+    if (targetType) query.targetType = targetType;
+    
+    // Admin ID filtering
+    if (adminId) query.adminId = adminId;
+    
+    const limitNum = Math.min(parseInt(limit), 500); // Cap at 500
+    
+    const logs = await AuditLog.find(query)
       .populate("adminId", "name phone")
       .sort({ createdAt: -1 })
-      .limit(100);
+      .limit(limitNum);
     res.json(logs);
   } catch (error) {
     res.status(500).json({ message: "Unable to load audit logs." });
