@@ -5,6 +5,7 @@ const User = require("../models/User");
 const Referral = require("../models/Referral");
 const Notification = require("../models/Notification");
 const SystemSetting = require("../models/SystemSetting");
+const LedgerEntry = require("../models/LedgerEntry");
 const authMiddleware = require("../middleware/authMiddleware");
 
 router.use(authMiddleware);
@@ -106,6 +107,12 @@ router.post("/daily-claim", async (req, res) => {
         message: "Daily bonus has already been claimed. Please try again later.",
       });
     }
+    await LedgerEntry.create({
+      userId: req.user.userId,
+      type: "daily_bonus",
+      amount: reward,
+      reference: { claimedAt: now },
+    });
     await Notification.create({
       userId: req.user.userId,
       title: "Daily bonus credited",
@@ -114,6 +121,30 @@ router.post("/daily-claim", async (req, res) => {
     res.json({ message: "Daily bonus claimed.", reward, user });
   } catch (error) {
     res.status(500).json({ message: "Unable to claim daily bonus." });
+  }
+});
+
+router.get("/me/transactions", async (req, res) => {
+  try {
+    const query = { userId: req.user.userId };
+    const { type } = req.query;
+    if (
+      type &&
+      [
+        "task_reward",
+        "referral_bonus",
+        "daily_bonus",
+        "withdrawal",
+        "withdrawal_refund",
+        "fee",
+      ].includes(type)
+    ) {
+      query.type = type;
+    }
+    const transactions = await LedgerEntry.find(query).sort({ createdAt: -1 });
+    res.json(transactions);
+  } catch (error) {
+    res.status(500).json({ message: "Unable to load transactions." });
   }
 });
 

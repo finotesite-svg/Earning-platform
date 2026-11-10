@@ -7,6 +7,7 @@ const User = require("../models/User");
 const Referral = require("../models/Referral");
 const Notification = require("../models/Notification");
 const SystemSetting = require("../models/SystemSetting");
+const LedgerEntry = require("../models/LedgerEntry");
 
 // Register Route
 router.post("/register", async (req, res) => {
@@ -61,6 +62,12 @@ router.post("/register", async (req, res) => {
       if (reward > 0) {
         await User.findByIdAndUpdate(referrer._id, {
           $inc: { balance: reward },
+        });
+        await LedgerEntry.create({
+          userId: referrer._id,
+          type: "referral_bonus",
+          amount: reward,
+          reference: { referredUserId: newUser._id },
         });
         await Notification.create({
           userId: referrer._id,
@@ -131,6 +138,129 @@ router.post("/login", async (req, res) => {
         referralCode: user.referralCode,
       },
     });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// Send verification code
+router.post("/send-verification", async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) {
+      return res.status(400).json({ message: "Phone number is required." });
+    }
+    const user = await User.findOne({ phone });
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+    const verificationCode = String(
+      Math.floor(100000 + Math.random() * 900000),
+    );
+    const verificationExpiry = new Date(Date.now() + 10 * 60 * 1000);
+    user.verificationCode = verificationCode;
+    user.verificationExpiry = verificationExpiry;
+    await user.save();
+    console.log(`Verification code for ${phone}: ${verificationCode}`);
+    res.json({ message: "Verification code sent successfully." });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// Verify phone
+router.post("/verify-phone", async (req, res) => {
+  try {
+    const { phone, code } = req.body;
+    if (!phone || !code) {
+      return res
+        .status(400)
+        .json({ message: "Phone number and verification code are required." });
+    }
+    const user = await User.findOne({ phone });
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+    if (
+      !user.verificationCode ||
+      user.verificationCode !== code ||
+      !user.verificationExpiry ||
+      user.verificationExpiry < new Date()
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Invalid or expired verification code." });
+    }
+    user.isVerified = true;
+    user.verificationCode = undefined;
+    user.verificationExpiry = undefined;
+    await user.save();
+    res.json({ message: "Phone number verified successfully." });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// Forgot password
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) {
+      return res.status(400).json({ message: "Phone number is required." });
+    }
+    const user = await User.findOne({ phone });
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+    user.resetPasswordToken = hashedToken;
+    user.resetPasswordExpiry = new Date(Date.now() + 60 * 60 * 1000);
+    await user.save();
+    console.log(`Password reset token for ${phone}: ${resetToken}`);
+    res.json({ message: "Password reset token generated." });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// Reset password
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { phone, token, newPassword } = req.body;
+    if (!phone || !token || !newPassword || newPassword.length < 6) {
+      return res.status(400).json({
+        message:
+          "Phone, token, and a new password of at least 6 characters are required.",
+      });
+    }
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+    const user = await User.findOne({ phone });
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+    if (
+      !user.resetPasswordToken ||
+      user.resetPasswordToken !== hashedToken ||
+      !user.resetPasswordExpiry ||
+      user.resetPasswordExpiry < new Date()
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Invalid or expired reset token." });
+    }
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpiry = undefined;
+    await user.save();
+    res.json({ message: "Password reset successfully." });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }

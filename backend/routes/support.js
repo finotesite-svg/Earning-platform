@@ -61,4 +61,46 @@ router.patch("/notifications/:id/read", async (req, res) => {
   }
 });
 
+router.patch("/notifications/read-all", async (req, res) => {
+  try {
+    const result = await Notification.updateMany(
+      { userId: req.user.userId, isRead: false },
+      { $set: { isRead: true } },
+    );
+    res.json({
+      message: "All notifications marked as read.",
+      modifiedCount: result.modifiedCount,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Unable to update notifications." });
+  }
+});
+
+router.delete("/notifications/:id", async (req, res) => {
+  try {
+    const notification = await Notification.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.user.userId,
+    });
+    if (!notification) {
+      return res.status(404).json({ message: "Notification not found." });
+    }
+    res.json({ message: "Notification deleted." });
+  } catch (error) {
+    res.status(500).json({ message: "Unable to delete notification." });
+  }
+});
+
+router.get("/notifications/unread-count", async (req, res) => {
+  try {
+    const count = await Notification.countDocuments({
+      userId: req.user.userId,
+      isRead: false,
+    });
+    res.json({ count });
+  } catch (error) {
+    res.status(500).json({ message: "Unable to count notifications." });
+  }
+});
+
 module.exports = router;

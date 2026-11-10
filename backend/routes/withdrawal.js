@@ -3,6 +3,8 @@ const router = express.Router();
 const WithdrawalRequest = require("../models/WithdrawalRequest");
 const User = require("../models/User");
 const SystemSetting = require("../models/SystemSetting");
+const LedgerEntry = require("../models/LedgerEntry");
+const PaymentEvent = require("../models/PaymentEvent");
 const authMiddleware = require("../middleware/authMiddleware");
 
 // Request withdrawal
@@ -26,9 +28,11 @@ router.post("/request", authMiddleware, async (req, res) => {
         message: `Minimum withdrawal is ${settings.minWithdrawal} ETB.`,
       });
     }
+    const feeAmount = (numericAmount * (settings?.platformFee ?? 0)) / 100;
+    const totalDeduction = numericAmount + feeAmount;
     const user = await User.findOneAndUpdate(
-      { _id: userId, balance: { $gte: numericAmount } },
-      { $inc: { balance: -numericAmount } },
+      { _id: userId, balance: { $gte: totalDeduction } },
+      { $inc: { balance: -totalDeduction } },
       { new: true },
     );
     if (!user) {
@@ -48,8 +52,27 @@ router.post("/request", authMiddleware, async (req, res) => {
         accountNumber: accountNumber.trim(),
         status: "Pending",
       });
+      await LedgerEntry.create({
+        userId,
+        type: "withdrawal",
+        amount: numericAmount,
+        reference: { withdrawalRequestId: withdrawal._id },
+      });
+      await LedgerEntry.create({
+        userId,
+        type: "fee",
+        amount: feeAmount,
+        reference: { withdrawalRequestId: withdrawal._id },
+      });
+      await PaymentEvent.create({
+        userId,
+        withdrawalRequestId: withdrawal._id,
+        event: "initiated",
+        amount: numericAmount,
+        metadata: { paymentMethod, accountNumber: accountNumber.trim() },
+      });
     } catch (error) {
-      await User.findByIdAndUpdate(userId, { $inc: { balance: numericAmount } });
+      await User.findByIdAndUpdate(userId, { $inc: { balance: totalDeduction } });
       throw error;
     }
 

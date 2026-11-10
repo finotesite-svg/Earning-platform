@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
+const { authLimiter, withdrawalLimiter } = require("./middleware/rateLimitMiddleware");
 
 const app = express();
 
@@ -23,9 +24,9 @@ const userRoutes = require("./routes/user");
 const supportRoutes = require("./routes/support");
 
 // Use Routes
-app.use("/api/auth", authRoutes);
+app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/tasks", taskRoutes);
-app.use("/api/withdrawal", withdrawalRoutes);
+app.use("/api/withdrawal", withdrawalLimiter, withdrawalRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/support", supportRoutes);

@@ -6,6 +6,10 @@ const WithdrawalRequest = require("../models/WithdrawalRequest");
 const User = require("../models/User");
 const Notification = require("../models/Notification");
 const SystemSetting = require("../models/SystemSetting");
+const SupportTicket = require("../models/SupportTicket");
+const AuditLog = require("../models/AuditLog");
+const LedgerEntry = require("../models/LedgerEntry");
+const PaymentEvent = require("../models/PaymentEvent");
 const authMiddleware = require("../middleware/authMiddleware");
 const adminMiddleware = require("../middleware/adminMiddleware");
 
@@ -84,6 +88,13 @@ router.patch("/users/:id/status", async (req, res) => {
       { new: true },
     ).select("name phone role isActive balance createdAt");
     if (!user) return res.status(404).json({ message: "User not found." });
+    await AuditLog.create({
+      adminId: req.user.userId,
+      action: "user_status_change",
+      targetType: "User",
+      targetId: user._id,
+      details: { isActive },
+    });
     res.json({ user });
   } catch (error) {
     res.status(500).json({ message: "Unable to update user status." });
@@ -112,9 +123,57 @@ router.post("/tasks", async (req, res) => {
       deadline: deadline || undefined,
       link: link?.trim() || "",
     });
+    await AuditLog.create({
+      adminId: req.user.userId,
+      action: "task_create",
+      targetType: "Task",
+      targetId: task._id,
+      details: { title: task.title, reward: task.reward },
+    });
     res.status(201).json({ message: "Task created successfully.", task });
   } catch (error) {
     res.status(500).json({ message: "Unable to create task." });
+  }
+});
+
+router.put("/tasks/:id", async (req, res) => {
+  try {
+    const { title, description, instructions, reward, deadline, link, eligibilityRules } =
+      req.body;
+    const numericReward = reward !== undefined ? Number(reward) : undefined;
+    if (
+      (title !== undefined && !title?.trim()) ||
+      (numericReward !== undefined &&
+        (!Number.isFinite(numericReward) || numericReward <= 0))
+    ) {
+      return res.status(400).json({
+        message: "Task title must be non-empty and reward must be positive.",
+      });
+    }
+    const updateFields = {};
+    if (title !== undefined) updateFields.title = title.trim();
+    if (description !== undefined) updateFields.description = description.trim();
+    if (instructions !== undefined) updateFields.instructions = instructions.trim();
+    if (numericReward !== undefined) updateFields.reward = numericReward;
+    if (deadline !== undefined) updateFields.deadline = deadline;
+    if (link !== undefined) updateFields.link = link?.trim() || "";
+    if (eligibilityRules !== undefined) updateFields.eligibilityRules = eligibilityRules;
+    const task = await Task.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateFields },
+      { new: true, runValidators: true },
+    );
+    if (!task) return res.status(404).json({ message: "Task not found." });
+    await AuditLog.create({
+      adminId: req.user.userId,
+      action: "task_update",
+      targetType: "Task",
+      targetId: task._id,
+      details: updateFields,
+    });
+    res.json({ message: "Task updated successfully.", task });
+  } catch (error) {
+    res.status(500).json({ message: "Unable to update task." });
   }
 });
 
@@ -126,6 +185,13 @@ router.delete("/tasks/:id", async (req, res) => {
       { new: true },
     );
     if (!task) return res.status(404).json({ message: "Task not found." });
+    await AuditLog.create({
+      adminId: req.user.userId,
+      action: "task_delete",
+      targetType: "Task",
+      targetId: task._id,
+      details: { title: task.title },
+    });
     res.json({ message: "Task deactivated successfully.", task });
   } catch (error) {
     res.status(500).json({ message: "Unable to delete task." });
@@ -171,7 +237,24 @@ router.put("/submissions/:id", async (req, res) => {
       await User.findByIdAndUpdate(submission.userId, {
         $inc: { balance: task.reward },
       });
+      await LedgerEntry.create({
+        userId: submission.userId,
+        type: "task_reward",
+        amount: task.reward,
+        reference: { taskId: task._id, submissionId: submission._id },
+      });
     }
+    await AuditLog.create({
+      adminId: req.user.userId,
+      action: "submission_review",
+      targetType: "TaskSubmission",
+      targetId: submission._id,
+      details: {
+        status,
+        taskId: submission.taskId,
+        userId: submission.userId,
+      },
+    });
     await Notification.create({
       userId: submission.userId,
       title:
@@ -227,7 +310,35 @@ router.patch("/withdrawals/:id", async (req, res) => {
       await User.findByIdAndUpdate(withdrawal.userId, {
         $inc: { balance: withdrawal.amount },
       });
+      await LedgerEntry.create({
+        userId: withdrawal.userId,
+        type: "withdrawal_refund",
+        amount: withdrawal.amount,
+        reference: { withdrawalRequestId: withdrawal._id },
+      });
+      await PaymentEvent.create({
+        userId: withdrawal.userId,
+        withdrawalRequestId: withdrawal._id,
+        event: "refunded",
+        amount: withdrawal.amount,
+        metadata: { reason: "admin_rejection" },
+      });
+    } else {
+      await PaymentEvent.create({
+        userId: withdrawal.userId,
+        withdrawalRequestId: withdrawal._id,
+        event: "completed",
+        amount: withdrawal.amount,
+        metadata: {},
+      });
     }
+    await AuditLog.create({
+      adminId: req.user.userId,
+      action: "withdrawal_review",
+      targetType: "WithdrawalRequest",
+      targetId: withdrawal._id,
+      details: { status, amount: withdrawal.amount, userId: withdrawal.userId },
+    });
     await Notification.create({
       userId: withdrawal.userId,
       title:
@@ -295,9 +406,96 @@ router.put("/settings", async (req, res) => {
       },
       { new: true, upsert: true, runValidators: true },
     );
+    await AuditLog.create({
+      adminId: req.user.userId,
+      action: "settings_update",
+      targetType: "SystemSetting",
+      targetId: settings._id,
+      details: {
+        minWithdrawal: settingsValues[0],
+        referralBonus: settingsValues[1],
+        dailyBonus: settingsValues[2],
+        platformFee: settingsValues[3],
+      },
+    });
     res.json({ message: "Settings updated.", settings });
   } catch (error) {
     res.status(500).json({ message: "Unable to update settings." });
+  }
+});
+
+router.get("/support/tickets", async (req, res) => {
+  try {
+    const tickets = await SupportTicket.find()
+      .populate("userId", "name phone")
+      .sort({ createdAt: -1 });
+    res.json(tickets);
+  } catch (error) {
+    res.status(500).json({ message: "Unable to load support tickets." });
+  }
+});
+
+router.patch("/support/tickets/:id", async (req, res) => {
+  try {
+    const { status } = req.body;
+    const statusMap = {
+      open: "Pending",
+      "in-progress": "In Progress",
+      resolved: "Resolved",
+    };
+    if (!statusMap[status]) {
+      return res.status(400).json({
+        message: "Status must be one of: open, in-progress, resolved.",
+      });
+    }
+    const ticket = await SupportTicket.findByIdAndUpdate(
+      req.params.id,
+      { $set: { status: statusMap[status] } },
+      { new: true },
+    );
+    if (!ticket) {
+      return res.status(404).json({ message: "Support ticket not found." });
+    }
+    res.json({ message: "Ticket status updated.", ticket });
+  } catch (error) {
+    res.status(500).json({ message: "Unable to update ticket status." });
+  }
+});
+
+router.post("/support/tickets/:id/reply", async (req, res) => {
+  try {
+    const { reply } = req.body;
+    if (!reply?.trim()) {
+      return res.status(400).json({ message: "Reply is required." });
+    }
+    const ticket = await SupportTicket.findByIdAndUpdate(
+      req.params.id,
+      { $set: { adminReply: reply.trim() } },
+      { new: true },
+    );
+    if (!ticket) {
+      return res.status(404).json({ message: "Support ticket not found." });
+    }
+    await Notification.create({
+      userId: ticket.userId,
+      title: "Support ticket update",
+      message: `Admin replied to your ticket: ${reply.trim().substring(0, 100)}${reply.length > 100 ? "..." : ""}`,
+    });
+    res.json({ message: "Reply sent successfully.", ticket });
+  } catch (error) {
+    res.status(500).json({ message: "Unable to send reply." });
+  }
+});
+
+router.get("/audit-logs", async (req, res) => {
+  try {
+    const logs = await AuditLog.find()
+      .populate("adminId", "name phone")
+      .sort({ createdAt: -1 })
+      .limit(100);
+    res.json(logs);
+  } catch (error) {
+    res.status(500).json({ message: "Unable to load audit logs." });
   }
 });
 

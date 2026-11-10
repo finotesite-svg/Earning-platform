@@ -9,6 +9,7 @@ const taskSchema = new mongoose.Schema(
     reward: { type: Number, required: true },
     deadline: { type: Date },
     isActive: { type: Boolean, default: true },
+    eligibilityRules: { type: mongoose.Schema.Types.Mixed, default: {} },
   },
   { timestamps: true },
 );

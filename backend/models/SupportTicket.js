@@ -14,6 +14,7 @@ const supportTicketSchema = new mongoose.Schema(
       enum: ["Pending", "In Progress", "Resolved"],
       default: "Pending",
     },
+    adminReply: { type: String },
   },
   { timestamps: true },
 );
