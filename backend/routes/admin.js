@@ -307,8 +307,9 @@ router.patch("/withdrawals/:id", async (req, res) => {
       });
     }
     if (status === "Rejected") {
+      const totalRefund = withdrawal.amount + (withdrawal.feeAmount || 0);
       await User.findByIdAndUpdate(withdrawal.userId, {
-        $inc: { balance: withdrawal.amount },
+        $inc: { balance: totalRefund },
       });
       await LedgerEntry.create({
         userId: withdrawal.userId,
@@ -316,12 +317,20 @@ router.patch("/withdrawals/:id", async (req, res) => {
         amount: withdrawal.amount,
         reference: { withdrawalRequestId: withdrawal._id },
       });
+      if (withdrawal.feeAmount > 0) {
+        await LedgerEntry.create({
+          userId: withdrawal.userId,
+          type: "withdrawal_refund",
+          amount: withdrawal.feeAmount,
+          reference: { withdrawalRequestId: withdrawal._id, refundType: "fee" },
+        });
+      }
       await PaymentEvent.create({
         userId: withdrawal.userId,
         withdrawalRequestId: withdrawal._id,
         event: "refunded",
         amount: withdrawal.amount,
-        metadata: { reason: "admin_rejection" },
+        metadata: { reason: "admin_rejection", feeRefunded: withdrawal.feeAmount },
       });
     } else {
       await PaymentEvent.create({

@@ -48,6 +48,7 @@ router.post("/request", authMiddleware, async (req, res) => {
       withdrawal = await WithdrawalRequest.create({
         userId,
         amount: numericAmount,
+        feeAmount: feeAmount,
         paymentMethod,
         accountNumber: accountNumber.trim(),
         status: "Pending",

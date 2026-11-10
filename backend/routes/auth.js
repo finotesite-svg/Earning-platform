@@ -8,6 +8,7 @@ const Referral = require("../models/Referral");
 const Notification = require("../models/Notification");
 const SystemSetting = require("../models/SystemSetting");
 const LedgerEntry = require("../models/LedgerEntry");
+const { verificationLimiter } = require("../middleware/rateLimitMiddleware");
 
 // Register Route
 router.post("/register", async (req, res) => {
@@ -144,7 +145,7 @@ router.post("/login", async (req, res) => {
 });
 
 // Send verification code
-router.post("/send-verification", async (req, res) => {
+router.post("/send-verification", verificationLimiter, async (req, res) => {
   try {
     const { phone } = req.body;
     if (!phone) {

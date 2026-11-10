@@ -16,4 +16,12 @@ const withdrawalLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-module.exports = { authLimiter, withdrawalLimiter };
+const verificationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3, // 3 requests per window
+  message: "Too many verification requests. Please try again later.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+module.exports = { authLimiter, withdrawalLimiter, verificationLimiter };

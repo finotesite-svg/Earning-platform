@@ -8,6 +8,7 @@ const withdrawalSchema = new mongoose.Schema(
       required: true,
     },
     amount: { type: Number, required: true },
+    feeAmount: { type: Number, default: 0 },
     paymentMethod: { type: String, enum: ["telebirr", "bank"], required: true },
     accountNumber: { type: String, required: true },
     status: {
