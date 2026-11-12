@@ -6,6 +6,7 @@ const Referral = require("../models/Referral");
 const Notification = require("../models/Notification");
 const SystemSetting = require("../models/SystemSetting");
 const LedgerEntry = require("../models/LedgerEntry");
+const DepositRequest = require("../models/DepositRequest");
 const authMiddleware = require("../middleware/authMiddleware");
 
 router.use(authMiddleware);
@@ -88,6 +89,39 @@ router.get("/recharge-accounts", async (req, res) => {
     res.json(settings?.rechargeAccounts || []);
   } catch (error) {
     res.status(500).json({ message: "Unable to load recharge accounts." });
+  }
+});
+
+router.post("/deposits", async (req, res) => {
+  try {
+    const { amount, paymentMethod, reference } = req.body;
+    const numericAmount = Number(amount);
+    if (
+      !Number.isFinite(numericAmount) ||
+      numericAmount <= 0 ||
+      !["telebirr", "bank"].includes(paymentMethod) ||
+      !reference?.trim()
+    ) {
+      return res.status(400).json({
+        message: "Enter a valid amount, payment method, and payment reference.",
+      });
+    }
+    if (reference.trim().length > 120) {
+      return res.status(400).json({ message: "Payment reference is too long." });
+    }
+
+    const deposit = await DepositRequest.create({
+      userId: req.user.userId,
+      amount: numericAmount,
+      paymentMethod,
+      reference: reference.trim(),
+    });
+    res.status(201).json({
+      message: "Deposit submitted for admin approval.",
+      deposit,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Unable to submit deposit." });
   }
 });
 
@@ -269,6 +303,7 @@ router.get("/me/transactions", async (req, res) => {
     if (
       type &&
       [
+        "deposit",
         "task_reward",
         "referral_bonus",
         "daily_bonus",

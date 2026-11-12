@@ -10,6 +10,7 @@ const SupportTicket = require("../models/SupportTicket");
 const AuditLog = require("../models/AuditLog");
 const LedgerEntry = require("../models/LedgerEntry");
 const PaymentEvent = require("../models/PaymentEvent");
+const DepositRequest = require("../models/DepositRequest");
 const authMiddleware = require("../middleware/authMiddleware");
 const authorizeRoles = require("../middleware/roleMiddleware");
 
@@ -448,6 +449,72 @@ router.get("/withdrawals", async (req, res) => {
   }
 });
 
+router.get("/deposits", async (req, res) => {
+  try {
+    const deposits = await DepositRequest.find()
+      .populate("userId", "name phone")
+      .sort({ createdAt: -1 });
+    res.json(deposits);
+  } catch (error) {
+    res.status(500).json({ message: "Unable to load deposits." });
+  }
+});
+
+router.patch("/deposits/:id", async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!["Approved", "Rejected"].includes(status)) {
+      return res.status(400).json({ message: "Status must be Approved or Rejected." });
+    }
+    const deposit = await DepositRequest.findOneAndUpdate(
+      { _id: req.params.id, status: "Pending" },
+      {
+        $set: {
+          status,
+          reviewedBy: req.user.userId,
+          reviewedAt: new Date(),
+        },
+      },
+      { new: true },
+    );
+    if (!deposit) {
+      const exists = await DepositRequest.exists({ _id: req.params.id });
+      return res.status(exists ? 409 : 404).json({
+        message: exists
+          ? "Deposit has already been reviewed."
+          : "Deposit not found.",
+      });
+    }
+
+    if (status === "Approved") {
+      await User.findByIdAndUpdate(deposit.userId, {
+        $inc: { balance: deposit.amount },
+      });
+      await LedgerEntry.create({
+        userId: deposit.userId,
+        type: "deposit",
+        amount: deposit.amount,
+        reference: { depositRequestId: deposit._id },
+      });
+    }
+    await AuditLog.create({
+      adminId: req.user.userId,
+      action: "deposit_review",
+      targetType: "DepositRequest",
+      targetId: deposit._id,
+      details: { status, amount: deposit.amount, userId: deposit.userId },
+    });
+    await Notification.create({
+      userId: deposit.userId,
+      title: status === "Approved" ? "Deposit approved" : "Deposit rejected",
+      message: `${deposit.amount.toFixed(2)} ETB deposit was ${status.toLowerCase()}.`,
+    });
+    res.json({ message: `Deposit ${status.toLowerCase()}.`, deposit });
+  } catch (error) {
+    res.status(500).json({ message: "Unable to update deposit." });
+  }
+});
+
 router.patch("/withdrawals/:id", async (req, res) => {
   try {
     const { status, paymentReference } = req.body;
@@ -804,6 +871,19 @@ router.get("/audit-logs", async (req, res) => {
 
 router.get("/reports/financial", async (req, res) => {
   try {
+    const now = new Date();
+    const startOfDay = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+    ));
+    const periods = {
+      daily: startOfDay,
+      weekly: new Date(startOfDay.getTime() - 6 * 24 * 60 * 60 * 1000),
+      monthly: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)),
+      overall: null,
+    };
+
     const [ledgerTotals, withdrawalTotals, referralTotals, recentAuditLogs] =
       await Promise.all([
         LedgerEntry.aggregate([
@@ -835,6 +915,25 @@ router.get("/reports/financial", async (req, res) => {
           .limit(20),
       ]);
 
+    const kpis = {};
+    for (const [period, start] of Object.entries(periods)) {
+      const dateFilter = start ? { createdAt: { $gte: start, $lte: now } } : {};
+      const [deposits, withdrawals] = await Promise.all([
+        DepositRequest.aggregate([
+          { $match: { status: "Approved", ...dateFilter } },
+          { $group: { _id: null, amount: { $sum: "$amount" }, count: { $sum: 1 } } },
+        ]),
+        WithdrawalRequest.aggregate([
+          { $match: { status: "Completed", ...dateFilter } },
+          { $group: { _id: null, amount: { $sum: "$amount" }, count: { $sum: 1 } } },
+        ]),
+      ]);
+      kpis[period] = {
+        deposits: deposits[0] || { amount: 0, count: 0 },
+        withdrawals: withdrawals[0] || { amount: 0, count: 0 },
+      };
+    }
+
     res.json({
       ledgerTotals,
       withdrawalTotals,
@@ -843,6 +942,7 @@ router.get("/reports/financial", async (req, res) => {
         totalRewards: 0,
       },
       recentAuditLogs,
+      kpis,
     });
   } catch (error) {
     res.status(500).json({ message: "Unable to load financial reports." });

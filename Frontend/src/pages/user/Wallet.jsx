@@ -28,6 +28,9 @@ export default function Wallet() {
   const [isRechargeOpen, setIsRechargeOpen] = useState(false);
   const [copiedRecharge, setCopiedRecharge] = useState("");
   const [rechargeError, setRechargeError] = useState("");
+  const [depositAmount, setDepositAmount] = useState("");
+  const [depositMethod, setDepositMethod] = useState("telebirr");
+  const [depositReference, setDepositReference] = useState("");
   const approvedPaymentAccounts = paymentAccounts.filter(
     (account) => account.status === "Approved",
   );
@@ -126,6 +129,25 @@ export default function Wallet() {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDepositSubmit = async (e) => {
+    e.preventDefault();
+    setRechargeError("");
+    try {
+      await API.post("/users/deposits", {
+        amount: Number(depositAmount),
+        paymentMethod: depositMethod,
+        reference: depositReference,
+      });
+      setDepositAmount("");
+      setDepositReference("");
+      setSuccessMsg("Deposit submitted for admin approval.");
+    } catch (err) {
+      setRechargeError(
+        err.response?.data?.message || "Unable to submit deposit.",
+      );
     }
   };
 
@@ -405,6 +427,46 @@ export default function Wallet() {
                   No recharge account has been configured .
                 </p>
               )}
+              <form
+                onSubmit={handleDepositSubmit}
+                className="space-y-3 rounded-xl border border-slate-700/60 bg-[#0B132B] p-4"
+              >
+                <h3 className="font-semibold text-white">Submit Deposit</h3>
+                <p className="text-xs text-slate-400">
+                  Send the payment first, then submit its amount and reference.
+                </p>
+                <input
+                  required
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={depositAmount}
+                  onChange={(e) => setDepositAmount(e.target.value)}
+                  placeholder="Amount (ETB)"
+                  className="w-full rounded-xl border border-slate-700/60 bg-[#1C2541] px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-[#00A86B]"
+                />
+                <select
+                  value={depositMethod}
+                  onChange={(e) => setDepositMethod(e.target.value)}
+                  className="w-full rounded-xl border border-slate-700/60 bg-[#1C2541] px-4 py-3 text-white focus:outline-none focus:border-[#00A86B]"
+                >
+                  <option value="telebirr">Telebirr</option>
+                  <option value="bank">CBE</option>
+                </select>
+                <input
+                  required
+                  value={depositReference}
+                  onChange={(e) => setDepositReference(e.target.value)}
+                  placeholder="Payment reference / transaction ID"
+                  className="w-full rounded-xl border border-slate-700/60 bg-[#1C2541] px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-[#00A86B]"
+                />
+                <button
+                  type="submit"
+                  className="w-full rounded-xl bg-[#00A86B] px-4 py-3 font-bold text-white hover:bg-[#00915c]"
+                >
+                  Submit Deposit
+                </button>
+              </form>
             </div>
           </div>
         </div>
