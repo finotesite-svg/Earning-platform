@@ -6,9 +6,10 @@ const SystemSetting = require("../models/SystemSetting");
 const LedgerEntry = require("../models/LedgerEntry");
 const PaymentEvent = require("../models/PaymentEvent");
 const authMiddleware = require("../middleware/authMiddleware");
+const { withdrawalLimiter } = require("../middleware/rateLimitMiddleware");
 
 // Request withdrawal
-router.post("/request", authMiddleware, async (req, res) => {
+router.post("/request", withdrawalLimiter, authMiddleware, async (req, res) => {
   try {
     const { amount, paymentMethod, accountNumber } = req.body;
     const numericAmount = Number(amount);
@@ -21,6 +22,27 @@ router.post("/request", authMiddleware, async (req, res) => {
       });
     }
     const userId = req.user.userId;
+    const approvedAccount = await User.findOne({
+      _id: userId,
+      paymentAccounts: {
+        $elemMatch: {
+          method: paymentMethod,
+          accountNumber: accountNumber.trim(),
+          status: "Approved",
+        },
+      },
+    });
+    const account = approvedAccount?.paymentAccounts.find(
+      (item) =>
+        item.method === paymentMethod &&
+        item.accountNumber === accountNumber.trim() &&
+        item.status === "Approved",
+    );
+    if (!account) {
+      return res.status(400).json({
+        message: "Select an approved payment account from your profile.",
+      });
+    }
 
     const settings = await SystemSetting.findOne({ key: "platform" });
     if (numericAmount < (settings?.minWithdrawal ?? 0)) {
@@ -51,6 +73,7 @@ router.post("/request", authMiddleware, async (req, res) => {
         feeAmount: feeAmount,
         paymentMethod,
         accountNumber: accountNumber.trim(),
+        accountName: account.accountName,
         status: "Pending",
       });
       await LedgerEntry.create({
@@ -83,7 +106,8 @@ router.post("/request", authMiddleware, async (req, res) => {
       balance: user.balance,
     });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
+    console.error("Withdrawal request error:", error);
+    res.status(500).json({ message: "Unable to submit the withdrawal request." });
   }
 });
 
@@ -95,7 +119,8 @@ router.get("/my-requests", authMiddleware, async (req, res) => {
       .select("amount paymentMethod accountNumber status createdAt");
     res.json(requests);
   } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
+    console.error("Withdrawal history error:", error);
+    res.status(500).json({ message: "Unable to load withdrawal history." });
   }
 });
 

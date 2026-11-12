@@ -33,7 +33,7 @@ export default function TaskSubmitModal({ task, onClose, onSubmitSuccess }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <div className="bg-[#1C2541] border border-slate-700/60 rounded-2xl max-w-md w-full p-6 space-y-6 shadow-2xl relative">
+      <div className="relative max-h-[90vh] w-full max-w-md space-y-6 overflow-y-auto rounded-2xl border border-slate-700/60 bg-[#1C2541] p-5 shadow-2xl sm:p-6">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-slate-400 hover:text-white transition cursor-pointer"

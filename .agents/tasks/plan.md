@@ -1,168 +1,219 @@
-# Implementation Plan: Missing Features for Earning Platform Backend
+# MongoDB to PostgreSQL Migration Plan
 
-This plan implements all missing functionality identified in the user requirements, following the existing patterns in the MERN stack (Express + CommonJS) codebase.
+## Overview
+This plan migrates the Earning Platform backend from MongoDB/Mongoose to PostgreSQL/Sequelize. The backend uses CommonJS (require/module.exports), no TypeScript. All 11 models (not 12 - Wallet.js is empty) will be converted, along with 6 route files that contain complex queries including aggregations, population (joins), atomic updates, and conditional queries.
 
-## HIGH PRIORITY FEATURES
+---
 
-- [ ] 1. **Install express-rate-limit dependency**
-      Run npm install to add express-rate-limit package required for rate limiting middleware.
-      Files: `c:\projects\Earning-platform\backend\package.json`
-      Verify: Run `cd backend && npm install express-rate-limit` and confirm package appears in package.json dependencies
+## Implementation Plan
 
-- [ ] 2. **Define AuditLog.js model schema**
-      Create Mongoose schema with adminId (ObjectId ref User), action (String, required), targetType (String), targetId (ObjectId), details (Mixed), and timestamps. Follow the pattern in `c:\projects\Earning-platform\backend\models\Notification.js` for structure.
-      Files: `c:\projects\Earning-platform\backend\models\AuditLog.js`
-      Verify: Run `node -e "require('./backend/models/AuditLog')"` from project root and confirm no syntax errors
+- [ ] 1. Install PostgreSQL dependencies and remove MongoDB dependencies
+      Run `npm uninstall mongoose` to remove MongoDB driver, then `npm install sequelize pg pg-hstore` to add Sequelize ORM and PostgreSQL drivers.
+      Files: c:\projects\Earning-platform\backend\package.json
+      Verify: Run `node -e "require('sequelize'); console.log('Sequelize loaded')"` and confirm it prints "Sequelize loaded" without errors.
 
-- [ ] 3. **Define LedgerEntry.js model schema**
-      Create Mongoose schema with userId (ObjectId ref User, required), type (enum: ['task_reward', 'referral_bonus', 'daily_bonus', 'withdrawal', 'withdrawal_refund', 'fee'], required), amount (Number, required), reference (Mixed), and createdAt (Date, default Date.now). Follow the pattern in `c:\projects\Earning-platform\backend\models\Referral.js` for enum structure.
-      Files: `c:\projects\Earning-platform\backend\models\LedgerEntry.js`
-      Verify: Run `node -e "require('./backend/models/LedgerEntry')"` from project root and confirm no syntax errors
+- [ ] 2. Create Sequelize database configuration file
+      Create c:\projects\Earning-platform\backend\config\database.js that exports a configured Sequelize instance. Use `process.env.DATABASE_URL` from .env file. Configure connection pool: max 10, min 0, acquire 30000ms, idle 10000ms. Set logging to console.log in development. Use `dialectOptions: { ssl: false }` for local development.
+      Files: c:\projects\Earning-platform\backend\config\database.js (new file)
+      Verify: Run `node -e "const seq = require('./backend/config/database'); seq.authenticate().then(() => console.log('Connected')).catch(e => console.error(e))"` from project root and confirm connection succeeds.
 
-- [ ] 4. **Define PaymentEvent.js model schema**
-      Create Mongoose schema with userId (ObjectId ref User, required), withdrawalRequestId (ObjectId ref WithdrawalRequest), event (enum: ['initiated', 'completed', 'rejected', 'refunded'], required), amount (Number, required), metadata (Mixed), and timestamps. Follow the pattern in `c:\projects\Earning-platform\backend\models\WithdrawalRequest.js` for enum structure.
-      Files: `c:\projects\Earning-platform\backend\models\PaymentEvent.js`
-      Verify: Run `node -e "require('./backend/models/PaymentEvent')"` from project root and confirm no syntax errors
+- [ ] 3. Convert User model to Sequelize
+      Convert c:\projects\Earning-platform\backend\models\User.js from Mongoose to Sequelize. Use INTEGER primary key with autoIncrement. Map types: String → STRING, Number → FLOAT for balance and dailyStreak, Boolean → BOOLEAN, Date → DATE. Add unique constraint on phone and referralCode. The referredBy field becomes referredById INTEGER with allowNull: true. Add indexes on phone, referralCode, and referredById. Keep timestamps: true.
+      Files: c:\projects\Earning-platform\backend\models\User.js
+      Verify: Run `node --check c:/projects/Earning-platform/backend/models/User.js` and confirm no syntax errors.
 
-- [ ] 5. **Add verification fields to User model**
-      Add verificationCode (String), verificationExpiry (Date) fields to User.js schema. Place after isVerified field to group related fields together.
-      Files: `c:\projects\Earning-platform\backend\models\User.js`
-      Verify: Run `node -e "const User = require('./backend/models/User'); console.log(User.schema.paths.verificationCode ? 'OK' : 'FAIL')"` from project root
+- [ ] 4. Convert Task model to Sequelize
+      Convert c:\projects\Earning-platform\backend\models\Task.js to Sequelize. Use INTEGER primary key. Map String → STRING, Number → FLOAT for reward, Date → DATE for deadline, Boolean → BOOLEAN for isActive. Map eligibilityRules (Mixed/Object) to JSON type. Set default values: isActive = true, link = '', eligibilityRules = {}.
+      Files: c:\projects\Earning-platform\backend\models\Task.js
+      Verify: Run `node --check c:/projects/Earning-platform/backend/models/Task.js` and confirm no syntax errors.
 
-- [ ] 6. **Add password reset fields to User model**
-      Add resetPasswordToken (String), resetPasswordExpiry (Date) fields to User.js schema. Place after verification fields.
-      Files: `c:\projects\Earning-platform\backend\models\User.js`
-      Verify: Run `node -e "const User = require('./backend/models/User'); console.log(User.schema.paths.resetPasswordToken ? 'OK' : 'FAIL')"` from project root
+- [ ] 5. Convert TaskSubmission model to Sequelize
+      Convert c:\projects\Earning-platform\backend\models\TaskSubmission.js to Sequelize. Use INTEGER primary key. Add userId INTEGER references User(id) and taskId INTEGER references Task(id) as foreign keys with onDelete: CASCADE. Map evidence to TEXT, status to ENUM(['Pending', 'Approved', 'Rejected']) with default 'Pending'. Add composite index on (userId, taskId) and index on status.
+      Files: c:\projects\Earning-platform\backend\models\TaskSubmission.js
+      Verify: Run `node --check c:/projects/Earning-platform/backend/models/TaskSubmission.js` and confirm no syntax errors.
 
-- [ ] 7. **Add eligibilityRules field to Task model**
-      Add eligibilityRules field (type: Mixed, default: {}) to Task.js schema. Place after isActive field.
-      Files: `c:\projects\Earning-platform\backend\models\Task.js`
-      Verify: Run `node -e "const Task = require('./backend/models/Task'); console.log(Task.schema.paths.eligibilityRules ? 'OK' : 'FAIL')"` from project root
+- [ ] 6. Convert Referral model to Sequelize
+      Convert c:\projects\Earning-platform\backend\models\Referral.js to Sequelize. Use INTEGER primary key. Add referrerId INTEGER references User(id) and referredUserId INTEGER references User(id) as foreign keys. Add unique constraint on referredUserId (each user can only be referred once). Map reward to FLOAT with default 0. Add index on referrerId.
+      Files: c:\projects\Earning-platform\backend\models\Referral.js
+      Verify: Run `node --check c:/projects/Earning-platform/backend/models/Referral.js` and confirm no syntax errors.
 
-- [ ] 8. **Create phone verification endpoints in auth.js**
-      Add POST /api/auth/send-verification (generates 6-digit code with Math.floor(100000 + Math.random() * 900000), saves to verificationCode and verificationExpiry = Date.now() + 10*60*1000, console.log the code) and POST /api/auth/verify-phone (checks code against verificationCode, verifies verificationExpiry > Date.now(), sets isVerified=true, clears verification fields). Follow error response pattern from existing auth.js routes (status 400 with { message: "..." }).
-      Files: `c:\projects\Earning-platform\backend\routes\auth.js`
-      Verify: Start server with `cd backend && node server.js`, then test with curl: `curl -X POST http://localhost:5000/api/auth/send-verification -H "Content-Type: application/json" -d "{\"phone\":\"1234567890\"}"` (expect 200 or appropriate error)
+- [ ] 7. Convert WithdrawalRequest model to Sequelize
+      Convert c:\projects\Earning-platform\backend\models\WithdrawalRequest.js to Sequelize. Use INTEGER primary key. Add userId INTEGER references User(id) as foreign key. Map amount and feeAmount to FLOAT (default 0 for feeAmount), paymentMethod to ENUM(['telebirr', 'bank']), accountNumber to STRING, status to ENUM(['Pending', 'Completed', 'Rejected']) with default 'Pending'. Add index on userId and status.
+      Files: c:\projects\Earning-platform\backend\models\WithdrawalRequest.js
+      Verify: Run `node --check c:/projects/Earning-platform/backend/models/WithdrawalRequest.js` and confirm no syntax errors.
 
-- [ ] 9. **Create password reset endpoints in auth.js**
-      Add POST /api/auth/forgot-password (finds user by phone, generates resetPasswordToken with crypto.randomBytes(32).toString('hex'), sets resetPasswordExpiry = Date.now() + 60*60*1000, console.log token, sends success message) and POST /api/auth/reset-password (requires token and newPassword, verifies token matches resetPasswordToken and resetPasswordExpiry > Date.now(), hashes password with bcrypt.hash following existing pattern in auth.js register route, updates user.password, clears reset fields). Follow error response pattern from existing auth.js routes.
-      Files: `c:\projects\Earning-platform\backend\routes\auth.js`
-      Verify: Start server, test forgot-password endpoint with curl: `curl -X POST http://localhost:5000/api/auth/forgot-password -H "Content-Type: application/json" -d "{\"phone\":\"1234567890\"}"` (expect 200 or appropriate error)
+- [ ] 8. Convert Notification model to Sequelize
+      Convert c:\projects\Earning-platform\backend\models\Notification.js to Sequelize. Use INTEGER primary key. Add userId INTEGER references User(id) as foreign key with onDelete: CASCADE. Map title and message to STRING/TEXT, isRead to BOOLEAN with default false. Add composite index on (userId, isRead) for efficient unread queries.
+      Files: c:\projects\Earning-platform\backend\models\Notification.js
+      Verify: Run `node --check c:/projects/Earning-platform/backend/models/Notification.js` and confirm no syntax errors.
 
-- [ ] 10. **Integrate LedgerEntry creation in admin.js submission approval**
-      In PUT /submissions/:id route, after User.findByIdAndUpdate (line that increments balance), add: `await LedgerEntry.create({ userId: submission.userId, type: 'task_reward', amount: task.reward, reference: { taskId: task._id, submissionId: submission._id } })`. Require LedgerEntry model at top: `const LedgerEntry = require("../models/LedgerEntry");`.
-      Files: `c:\projects\Earning-platform\backend\routes\admin.js`
-      Verify: Start server, approve a submission via admin panel, then query MongoDB: `use earning_platform; db.ledgerentries.find().pretty()` to confirm entry was created
+- [ ] 9. Convert SupportTicket model to Sequelize
+      Convert c:\projects\Earning-platform\backend\models\SupportTicket.js to Sequelize. Use INTEGER primary key. Add userId INTEGER references User(id) as foreign key. Map subject and message to STRING/TEXT with trim, status to ENUM(['Pending', 'In Progress', 'Resolved']) with default 'Pending', adminReply to TEXT with allowNull: true. Add index on userId and status.
+      Files: c:\projects\Earning-platform\backend\models\SupportTicket.js
+      Verify: Run `node --check c:/projects/Earning-platform/backend/models/SupportTicket.js` and confirm no syntax errors.
 
-- [ ] 11. **Integrate LedgerEntry creation in user.js daily claim**
-      In POST /daily-claim route in user.js, after User.findOneAndUpdate (the atomic update that increments balance), add: `await LedgerEntry.create({ userId: req.user.userId, type: 'daily_bonus', amount: reward, reference: { claimedAt: now } })`. Require LedgerEntry model at top: `const LedgerEntry = require("../models/LedgerEntry");`.
-      Files: `c:\projects\Earning-platform\backend\routes\user.js`
-      Verify: Start server, claim daily bonus via user panel, then query MongoDB to confirm ledger entry exists with type 'daily_bonus'
+- [ ] 10. Convert SystemSetting model to Sequelize
+       Convert c:\projects\Earning-platform\backend\models\SystemSetting.js to Sequelize. Use INTEGER primary key. Add unique constraint on key field (STRING). Map minWithdrawal, referralBonus, dailyBonus, platformFee to FLOAT with defaults 200, 50, 50, 5 respectively. Add index on key field.
+       Files: c:\projects\Earning-platform\backend\models\SystemSetting.js
+       Verify: Run `node --check c:/projects/Earning-platform/backend/models/SystemSetting.js` and confirm no syntax errors.
 
-- [ ] 12. **Integrate LedgerEntry creation in auth.js registration referral bonus**
-      In POST /register route in auth.js, inside the `if (reward > 0)` block after `User.findByIdAndUpdate(referrer._id, { $inc: { balance: reward } })`, add: `await LedgerEntry.create({ userId: referrer._id, type: 'referral_bonus', amount: reward, reference: { referredUserId: newUser._id } })`. Require LedgerEntry model at top: `const LedgerEntry = require("../models/LedgerEntry");`.
-      Files: `c:\projects\Earning-platform\backend\routes\auth.js`
-      Verify: Start server, register new user with valid referral code, then query MongoDB to confirm ledger entry created for referrer with type 'referral_bonus'
+- [ ] 11. Convert AuditLog model to Sequelize
+       Convert c:\projects\Earning-platform\backend\models\AuditLog.js to Sequelize. Use INTEGER primary key. Add adminId INTEGER references User(id) as foreign key. Map action to STRING (required), targetType to STRING (nullable), targetId to INTEGER (nullable), details to JSON (nullable). Add index on adminId and targetType.
+       Files: c:\projects\Earning-platform\backend\models\AuditLog.js
+       Verify: Run `node --check c:/projects/Earning-platform/backend/models/AuditLog.js` and confirm no syntax errors.
 
-- [ ] 13. **Integrate LedgerEntry and PaymentEvent creation in withdrawal.js request**
-      In POST /request route in withdrawal.js, after WithdrawalRequest.create, add: `await LedgerEntry.create({ userId, type: 'withdrawal', amount: numericAmount, reference: { withdrawalRequestId: withdrawal._id } })` and `await PaymentEvent.create({ userId, withdrawalRequestId: withdrawal._id, event: 'initiated', amount: numericAmount, metadata: { paymentMethod, accountNumber: accountNumber.trim() } })`. Calculate platformFee from SystemSettings (already fetched), deduct fee from withdrawal amount: before user balance update, calculate `const feeAmount = (numericAmount * (settings?.platformFee ?? 0)) / 100`, update balance decrement to use `numericAmount` (full amount including fee), and after withdrawal creation, create fee ledger entry: `await LedgerEntry.create({ userId, type: 'fee', amount: feeAmount, reference: { withdrawalRequestId: withdrawal._id } })`. Require both models at top: `const LedgerEntry = require("../models/LedgerEntry");` and `const PaymentEvent = require("../models/PaymentEvent");`.
-      Files: `c:\projects\Earning-platform\backend\routes\withdrawal.js`
-      Verify: Start server, submit withdrawal request, query MongoDB to confirm 2 ledger entries (withdrawal + fee) and 1 payment event with event='initiated'
+- [ ] 12. Convert LedgerEntry model to Sequelize
+       Convert c:\projects\Earning-platform\backend\models\LedgerEntry.js to Sequelize. Use INTEGER primary key. Add userId INTEGER references User(id) as foreign key. Map type to ENUM(['task_reward', 'referral_bonus', 'daily_bonus', 'withdrawal', 'withdrawal_refund', 'fee']) required, amount to FLOAT required, reference to JSON (nullable). Add index on userId and composite index on (userId, type).
+       Files: c:\projects\Earning-platform\backend\models\LedgerEntry.js
+       Verify: Run `node --check c:/projects/Earning-platform/backend/models/LedgerEntry.js` and confirm no syntax errors.
 
-- [ ] 14. **Integrate LedgerEntry and PaymentEvent creation in admin.js withdrawal rejection**
-      In PATCH /withdrawals/:id route in admin.js, inside the `if (status === "Rejected")` block after User.findByIdAndUpdate refund, add: `await LedgerEntry.create({ userId: withdrawal.userId, type: 'withdrawal_refund', amount: withdrawal.amount, reference: { withdrawalRequestId: withdrawal._id } })` and `await PaymentEvent.create({ userId: withdrawal.userId, withdrawalRequestId: withdrawal._id, event: 'refunded', amount: withdrawal.amount, metadata: { reason: 'admin_rejection' } })`. For Completed status, add PaymentEvent: `await PaymentEvent.create({ userId: withdrawal.userId, withdrawalRequestId: withdrawal._id, event: 'completed', amount: withdrawal.amount, metadata: {} })`. Require both models at top: `const LedgerEntry = require("../models/LedgerEntry");` and `const PaymentEvent = require("../models/PaymentEvent");`.
-      Files: `c:\projects\Earning-platform\backend\routes\admin.js`
-      Verify: Start server, reject a withdrawal via admin panel, query MongoDB to confirm ledger entry with type='withdrawal_refund' and payment event with event='refunded'
+- [ ] 13. Convert PaymentEvent model to Sequelize
+       Convert c:\projects\Earning-platform\backend\models\PaymentEvent.js to Sequelize. Use INTEGER primary key. Add userId INTEGER references User(id) as foreign key, withdrawalRequestId INTEGER references WithdrawalRequest(id) with allowNull: true. Map event to ENUM(['initiated', 'completed', 'rejected', 'refunded']) required, amount to FLOAT required, metadata to JSON. Add indexes on userId and withdrawalRequestId.
+       Files: c:\projects\Earning-platform\backend\models\PaymentEvent.js
+       Verify: Run `node --check c:/projects/Earning-platform/backend/models/PaymentEvent.js` and confirm no syntax errors.
 
-- [ ] 15. **Integrate AuditLog creation in admin.js user status change**
-      In PATCH /users/:id/status route in admin.js, after successful User.findByIdAndUpdate, add: `await AuditLog.create({ adminId: req.user.userId, action: 'user_status_change', targetType: 'User', targetId: user._id, details: { isActive } })`. Require AuditLog model at top: `const AuditLog = require("../models/AuditLog");`.
-      Files: `c:\projects\Earning-platform\backend\routes\admin.js`
-      Verify: Start server, change user status via admin panel, query MongoDB: `db.auditlogs.find().pretty()` to confirm audit log entry
+- [ ] 14. Create model associations and index file
+       Create c:\projects\Earning-platform\backend\models\index.js that imports all models and defines associations: User.hasMany(Referral, {foreignKey: 'referrerId'}), User.hasMany(TaskSubmission), Task.hasMany(TaskSubmission), User.hasOne(Referral, {as: 'ReferralRecord', foreignKey: 'referredUserId'}), User.hasMany(WithdrawalRequest), User.hasMany(Notification), User.hasMany(SupportTicket), User.hasMany(AuditLog, {foreignKey: 'adminId'}), User.hasMany(LedgerEntry), User.hasMany(PaymentEvent), WithdrawalRequest.hasMany(PaymentEvent). Export sequelize instance and all models.
+       Files: c:\projects\Earning-platform\backend\models\index.js (new file)
+       Verify: Run `node --check c:/projects/Earning-platform/backend/models/index.js` and confirm no syntax errors.
 
-- [ ] 16. **Integrate AuditLog creation in admin.js submission approval/rejection**
-      In PUT /submissions/:id route in admin.js, after successful TaskSubmission.findOneAndUpdate, add: `await AuditLog.create({ adminId: req.user.userId, action: 'submission_review', targetType: 'TaskSubmission', targetId: submission._id, details: { status, taskId: submission.taskId, userId: submission.userId } })`. Require AuditLog model at top (already added in step 15).
-      Files: `c:\projects\Earning-platform\backend\routes\admin.js`
-      Verify: Start server, approve/reject a submission, query MongoDB to confirm audit log entry with action='submission_review'
+- [ ] 15. Update server.js to use Sequelize connection
+       Replace mongoose.connect() in c:\projects\Earning-platform\backend\server.js with sequelize.authenticate() and sequelize.sync({ alter: true }). Import sequelize from './models/index.js'. Remove mongoose require. Update connection success message to "Connected to PostgreSQL successfully! 🐘". Keep error handling and PORT logic unchanged.
+       Files: c:\projects\Earning-platform\backend\server.js
+       Verify: Run `node --check c:/projects/Earning-platform/backend/server.js` and confirm no syntax errors.
 
-- [ ] 17. **Integrate AuditLog creation in admin.js withdrawal approval/rejection**
-      In PATCH /withdrawals/:id route in admin.js, after successful WithdrawalRequest.findOneAndUpdate, add: `await AuditLog.create({ adminId: req.user.userId, action: 'withdrawal_review', targetType: 'WithdrawalRequest', targetId: withdrawal._id, details: { status, amount: withdrawal.amount, userId: withdrawal.userId } })`. Require AuditLog model at top (already added in step 15).
-      Files: `c:\projects\Earning-platform\backend\routes\admin.js`
-      Verify: Start server, approve/reject a withdrawal, query MongoDB to confirm audit log entry with action='withdrawal_review'
+- [ ] 16. Update .env file for PostgreSQL connection
+       Replace MONGO_URI in c:\projects\Earning-platform\backend\.env with DATABASE_URL=postgresql://postgres:password@localhost:5432/earning_platform. Keep JWT_SECRET, PORT, and FRONTEND_URL unchanged. Add comment instructing user to update postgres password and create database 'earning_platform' in pgAdmin4.
+       Files: c:\projects\Earning-platform\backend\.env
+       Verify: Manual inspection - confirm DATABASE_URL format is correct and MONGO_URI is removed.
 
-- [ ] 18. **Integrate AuditLog creation in admin.js settings update**
-      In PUT /settings route in admin.js, after successful SystemSetting.findOneAndUpdate, add: `await AuditLog.create({ adminId: req.user.userId, action: 'settings_update', targetType: 'SystemSetting', targetId: settings._id, details: { minWithdrawal: settingsValues[0], referralBonus: settingsValues[1], dailyBonus: settingsValues[2], platformFee: settingsValues[3] } })`. Require AuditLog model at top (already added in step 15).
-      Files: `c:\projects\Earning-platform\backend\routes\admin.js`
-      Verify: Start server, update settings via admin panel, query MongoDB to confirm audit log entry with action='settings_update'
+- [ ] 17. Convert auth routes (auth.js) to Sequelize queries
+       Update c:\projects\Earning-platform\backend\routes\auth.js to use Sequelize API. Replace User.findOne() with User.findOne({ where: {...} }), User.findByIdAndUpdate() with User.findByPk() + instance.increment(), new User().save() with User.create(), etc. Replace _id with id throughout. Replace $inc operator with instance.increment() or Sequelize.literal(). Update populate references to include: [{ model: User, attributes: [...] }]. Handle crypto and bcrypt logic unchanged.
+       Files: c:\projects\Earning-platform\backend\routes\auth.js
+       Verify: Run `node --check c:/projects/Earning-platform/backend/routes/auth.js` and confirm no syntax errors.
 
-- [ ] 19. **Integrate AuditLog creation in admin.js task create**
-      In POST /tasks route in admin.js, after successful Task.create, add: `await AuditLog.create({ adminId: req.user.userId, action: 'task_create', targetType: 'Task', targetId: task._id, details: { title: task.title, reward: task.reward } })`. Require AuditLog model at top (already added in step 15).
-      Files: `c:\projects\Earning-platform\backend\routes\admin.js`
-      Verify: Start server, create a task via admin panel, query MongoDB to confirm audit log entry with action='task_create'
+- [ ] 18. Convert task routes (task.js) to Sequelize queries
+       Update c:\projects\Earning-platform\backend\routes\task.js to use Sequelize API. Replace Task.find({ isActive: true }) with Task.findAll({ where: { isActive: true } }), TaskSubmission.findOne() with appropriate where clause, new TaskSubmission().save() with TaskSubmission.create(). Replace status $in operator with { [Op.in]: [...] } from Sequelize.Op. Update _id references to id.
+       Files: c:\projects\Earning-platform\backend\routes\task.js
+       Verify: Run `node --check c:/projects/Earning-platform/backend/routes/task.js` and confirm no syntax errors.
 
-- [ ] 20. **Integrate AuditLog creation in admin.js task delete**
-      In DELETE /tasks/:id route in admin.js, after successful Task.findByIdAndUpdate, add: `await AuditLog.create({ adminId: req.user.userId, action: 'task_delete', targetType: 'Task', targetId: task._id, details: { title: task.title } })`. Require AuditLog model at top (already added in step 15).
-      Files: `c:\projects\Earning-platform\backend\routes\admin.js`
-      Verify: Start server, delete a task via admin panel, query MongoDB to confirm audit log entry with action='task_delete'
+- [ ] 19. Convert withdrawal routes (withdrawal.js) to Sequelize queries
+       Update c:\projects\Earning-platform\backend\routes\withdrawal.js to use Sequelize API. Replace User.findOneAndUpdate() with transaction-based findOne + decrement/increment + save pattern to ensure atomicity. Use sequelize.transaction() for withdrawal request creation. Replace WithdrawalRequest.find() with findAll(), _id with id. Import Op from 'sequelize' for $gte operator replacement: { balance: { [Op.gte]: totalDeduction } }.
+       Files: c:\projects\Earning-platform\backend\routes\withdrawal.js
+       Verify: Run `node --check c:/projects/Earning-platform/backend/routes/withdrawal.js` and confirm no syntax errors.
 
-## MEDIUM PRIORITY FEATURES
+- [ ] 20. Convert user routes (user.js) to Sequelize queries
+       Update c:\projects\Earning-platform\backend\routes\user.js to use Sequelize API. Replace User.findById() with User.findByPk(), Referral.find({ referrerId: ... }) with Referral.findAll({ where: { referrerId: ... }, include: [{ model: User, as: 'ReferredUser', attributes: ['name', 'phone'] }] }). Replace User.findOneAndUpdate() with sequelize.transaction() wrapping findOne + update + save for atomic daily claim with date comparison in where clause. Use Op.or, Op.lte for date conditionals. Replace LedgerEntry.find() with findAll().
+       Files: c:\projects\Earning-platform\backend\routes\user.js
+       Verify: Run `node --check c:/projects/Earning-platform/backend/routes/user.js` and confirm no syntax errors.
 
-- [ ] 21. **Create rate limiting middleware**
-      Create `c:\projects\Earning-platform\backend\middleware\rateLimitMiddleware.js` exporting authLimiter (15 requests per 15 minutes, windowMs: 15*60*1000, max: 15) and withdrawalLimiter (5 requests per hour, windowMs: 60*60*1000, max: 5). Use rateLimit from express-rate-limit. Follow structure: `const rateLimit = require("express-rate-limit"); const authLimiter = rateLimit({ windowMs: ..., max: ..., message: "..." }); module.exports = { authLimiter, withdrawalLimiter };`.
-      Files: `c:\projects\Earning-platform\backend\middleware\rateLimitMiddleware.js`
-      Verify: Run `node -e "const {authLimiter, withdrawalLimiter} = require('./backend/middleware/rateLimitMiddleware'); console.log(authLimiter && withdrawalLimiter ? 'OK' : 'FAIL')"` from project root
+- [ ] 21. Convert support routes (support.js) to Sequelize queries
+       Update c:\projects\Earning-platform\backend\routes\support.js to use Sequelize API. Replace SupportTicket.find() with findAll({ where: ... }), Notification.find() with findAll(), findOneAndUpdate() with findOne + update pattern, updateMany() with Notification.update({ isRead: true }, { where: { userId: ..., isRead: false } }), findOneAndDelete() with destroy({ where: ... }), countDocuments() with count({ where: ... }).
+       Files: c:\projects\Earning-platform\backend\routes\support.js
+       Verify: Run `node --check c:/projects/Earning-platform/backend/routes/support.js` and confirm no syntax errors.
 
-- [ ] 22. **Apply rate limiters in server.js**
-      In server.js, require rate limiters: `const { authLimiter, withdrawalLimiter } = require("./middleware/rateLimitMiddleware");`. Change `app.use("/api/auth", authRoutes);` to `app.use("/api/auth", authLimiter, authRoutes);`. Change `app.use("/api/withdrawal", withdrawalRoutes);` to `app.use("/api/withdrawal", withdrawalLimiter, withdrawalRoutes);`. Insert after line 13 where cors middleware is applied, before route imports section.
-      Files: `c:\projects\Earning-platform\backend\server.js`
-      Verify: Start server with `cd backend && node server.js`, make 16 rapid auth requests (e.g., curl POST to /api/auth/login), confirm 16th request returns 429 Too Many Requests
+- [ ] 22. Convert admin routes (admin.js) - part 1: overview and user management
+       Update c:\projects\Earning-platform\backend\routes\admin.js admin overview section. Replace countDocuments() with count({ where: ... }), Task.countDocuments({ isActive: true }) with Task.count({ where: { isActive: true } }). Replace WithdrawalRequest.aggregate() with sequelize.fn('SUM', sequelize.col('amount')) using findAll + attributes. Replace populate() with include: [{ model: User, attributes: ['name'] }, { model: Task, attributes: ['title'] }]. Update user management routes: replace findByIdAndUpdate with findByPk + instance.update().
+       Files: c:\projects\Earning-platform\backend\routes\admin.js
+       Verify: Run `node --check c:/projects/Earning-platform/backend/routes/admin.js` and confirm no syntax errors.
 
-- [ ] 23. **Add admin support ticket management endpoints**
-      In admin.js, add GET /admin/support/tickets (returns all SupportTicket records with .populate("userId", "name phone").sort({ createdAt: -1 })), PATCH /admin/support/tickets/:id (validates status in ["open", "in-progress", "resolved"], maps to schema enums: "open"->"Pending", "in-progress"->"In Progress", "resolved"->"Resolved", updates SupportTicket status, returns updated ticket), POST /admin/support/tickets/:id/reply (adds adminReply field to ticket - NOTE: must first add adminReply String field to SupportTicket.js schema, creates Notification for ticket.userId with title "Support ticket update" and message containing the reply). Require SupportTicket at top: `const SupportTicket = require("../models/SupportTicket");` (already imported in support.js, add to admin.js). Follow error response pattern from existing admin routes. Place after /settings route.
-      Files: `c:\projects\Earning-platform\backend\routes\admin.js`, `c:\projects\Earning-platform\backend\models\SupportTicket.js`
-      Verify: Start server, create support ticket as user, then GET /admin/support/tickets as admin, confirm ticket appears. PATCH ticket status, confirm status updates. POST reply, confirm notification created.
+- [ ] 23. Convert admin routes (admin.js) - part 2: task, submission, withdrawal management
+       Continue updating c:\projects\Earning-platform\backend\routes\admin.js. Replace Task.create() with Sequelize create (already compatible but verify attributes). Replace Task.findByIdAndUpdate() with findByPk + instance.update({ ...fields }). For submissions and withdrawals: replace findOneAndUpdate() with findOne({ where: { id: ..., status: 'Pending' } }) + instance.update(). Replace exists() with findByPk() !== null. Update atomic balance changes to use instance.increment() or transactions. Replace $set with direct field assignment.
+       Files: c:\projects\Earning-platform\backend\routes\admin.js
+       Verify: Run `node --check c:/projects/Earning-platform/backend/routes/admin.js` and confirm no syntax errors.
 
-- [ ] 24. **Add task update endpoint**
-      In admin.js, add PUT /admin/tasks/:id route. Accept title, description, instructions, reward, deadline, link, eligibilityRules from req.body. Validate title?.trim() exists and reward is positive number. Use Task.findByIdAndUpdate with $set for all fields, { new: true, runValidators: true }. Create AuditLog entry with action='task_update'. Follow error response pattern from existing admin routes (404 if task not found). Place after POST /tasks route.
-      Files: `c:\projects\Earning-platform\backend\routes\admin.js`
-      Verify: Start server, create a task, then PUT /admin/tasks/:id with updated title/reward, confirm task updates. Query MongoDB to confirm audit log entry with action='task_update'.
+- [ ] 24. Convert admin routes (admin.js) - part 3: settings, support, audit logs
+       Complete c:\projects\Earning-platform\backend\routes\admin.js migration. Replace SystemSetting.findOneAndUpdate() with findOrCreate + instance.update pattern: SystemSetting.findOrCreate({ where: { key: 'platform' }, defaults: { minWithdrawal: 200, ... } }), then update if needed. Replace SupportTicket populate with include. Replace AuditLog.find() with findAll({ include: [{ model: User, as: 'Admin', attributes: ['name', 'phone'] }], order: [['createdAt', 'DESC']], limit: 100 }).
+       Files: c:\projects\Earning-platform\backend\routes\admin.js
+       Verify: Run `node --check c:/projects/Earning-platform/backend/routes/admin.js` and confirm no syntax errors.
 
-## LOW PRIORITY FEATURES
+- [ ] 25. Create database and test server startup
+       Use pgAdmin4 to create database 'earning_platform'. Update DATABASE_URL password in .env to match your PostgreSQL postgres user password. Start the server with `node backend/server.js` - Sequelize will auto-create tables via sync({ alter: true }). Confirm server starts, connects to PostgreSQL, and prints "Connected to PostgreSQL successfully! 🐘" and "Server is running on port 5000 🚀".
+       Files: N/A (database creation + server startup)
+       Verify: Server starts without errors and all tables are created in PostgreSQL (verify in pgAdmin4 that tables: users, tasks, tasksubmissions, referrals, withdrawalrequests, notifications, supporttickets, systemsettings, auditlogs, ledgerentries, paymentevents exist).
 
-- [ ] 25. **Add notification enhancement endpoints in support.js**
-      In support.js, add PATCH /support/notifications/read-all (uses Notification.updateMany({ userId: req.user.userId, isRead: false }, { $set: { isRead: true } }), returns { message: "...", modifiedCount: result.modifiedCount }), DELETE /support/notifications/:id (uses Notification.findOneAndDelete({ _id: req.params.id, userId: req.user.userId }), returns 404 if not found), GET /support/notifications/unread-count (uses Notification.countDocuments({ userId: req.user.userId, isRead: false }), returns { count: ... }). Follow error response pattern from existing support.js routes. Place after existing notification routes.
-      Files: `c:\projects\Earning-platform\backend\routes\support.js`
-      Verify: Start server, create notifications for user, call GET /support/notifications/unread-count (confirm count > 0), call PATCH /support/notifications/read-all, call GET /support/notifications/unread-count again (confirm count = 0)
+---
 
-- [ ] 26. **Add transaction history endpoint in user.js**
-      In user.js, add GET /users/me/transactions route. Query LedgerEntry.find({ userId: req.user.userId }).sort({ createdAt: -1 }). Accept optional ?type= query param (req.query.type), if present and valid (one of the enum values), add to find query: { userId: req.user.userId, type: req.query.type }. Return ledger entries array. Follow error response pattern from existing user.js routes. Require LedgerEntry at top: `const LedgerEntry = require("../models/LedgerEntry");`. Place after GET /referrals route.
-      Files: `c:\projects\Earning-platform\backend\routes\user.js`
-      Verify: Start server, perform actions that create ledger entries (claim daily bonus, submit task), then GET /users/me/transactions as user, confirm transactions appear. Test with ?type=daily_bonus filter, confirm only daily_bonus entries returned.
+## Key Migration Patterns
 
-## Build and Test Commands
+### MongoDB → Sequelize Query Conversion Reference
 
-Since this is a Node.js/Express backend with no test framework currently configured:
+| MongoDB/Mongoose | Sequelize |
+|------------------|-----------|
+| `Model.find()` | `Model.findAll()` |
+| `Model.findOne()` | `Model.findOne({ where: {...} })` |
+| `Model.findById(id)` | `Model.findByPk(id)` |
+| `Model.findByIdAndUpdate(id, update)` | `Model.findByPk(id)` + `instance.update(update)` |
+| `Model.findOneAndUpdate(filter, update)` | `Model.findOne({ where: filter })` + `instance.update()` |
+| `new Model(data).save()` | `Model.create(data)` |
+| `Model.countDocuments(filter)` | `Model.count({ where: filter })` |
+| `Model.exists(filter)` | `Model.findOne({ where: filter }) !== null` |
+| `instance.save()` | `instance.save()` (same) |
+| `.populate('field')` | `include: [{ model: RelatedModel }]` |
+| `.select('field1 field2')` | `attributes: ['field1', 'field2']` |
+| `.sort({ field: -1 })` | `order: [['field', 'DESC']]` |
+| `.limit(n)` | `limit: n` |
+| `{ field: { $gte: value } }` | `{ field: { [Op.gte]: value } }` |
+| `{ field: { $in: array } }` | `{ field: { [Op.in]: array } }` |
+| `{ $or: [cond1, cond2] }` | `{ [Op.or]: [cond1, cond2] }` |
+| `{ $inc: { balance: amount } }` | `instance.increment({ balance: amount })` |
+| `.aggregate([...])` | Use `sequelize.fn()`, `attributes`, `group` |
+| `mongoose.Schema.Types.ObjectId` | `INTEGER` with autoIncrement |
+| `_id` | `id` |
 
-**Start server**: `cd c:\projects\Earning-platform\backend && node server.js`
+### Data Type Mapping
 
-**Quick smoke test**: After server starts, run:
-```bash
-curl http://localhost:5000/
+| Mongoose | Sequelize (DataTypes) |
+|----------|----------------------|
+| String | STRING or TEXT |
+| Number | FLOAT or INTEGER |
+| Boolean | BOOLEAN |
+| Date | DATE |
+| mongoose.Schema.Types.Mixed | JSON |
+| enum: [...] | ENUM([...]) |
+| ObjectId references | INTEGER with foreignKey |
+
+### Transaction Pattern for Atomic Operations
+
+MongoDB's `findOneAndUpdate` with conditions is atomic. In PostgreSQL/Sequelize, wrap multi-step operations in transactions:
+
+```javascript
+const result = await sequelize.transaction(async (t) => {
+  const user = await User.findOne({ 
+    where: { id: userId, balance: { [Op.gte]: amount } },
+    transaction: t,
+    lock: t.LOCK.UPDATE
+  });
+  if (!user) throw new Error('Insufficient balance');
+  await user.decrement({ balance: amount }, { transaction: t });
+  return user;
+});
 ```
-Expected output: `{"message":"Earning Platform Backend is running successfully!"}`
 
-**Verify MongoDB connection**: Check server console output for "Connected to MongoDB successfully! 🍃"
+---
 
-**Manual endpoint testing**: Use curl, Postman, or the existing frontend to test each new endpoint. MongoDB queries using `mongosh` or MongoDB Compass to verify data integrity.
+## Post-Migration Verification Checklist
 
-## Order of Operations Summary
+After completing all steps:
 
-1. **Dependencies first** (step 1): Install express-rate-limit
-2. **Models next** (steps 2-7): Define empty models and add fields to existing models
-3. **Authentication features** (steps 8-9): Add verification and password reset endpoints
-4. **Financial audit trail** (steps 10-14): Integrate LedgerEntry and PaymentEvent creation across all money-moving operations
-5. **Admin audit trail** (steps 15-20): Integrate AuditLog creation across all admin operations
-6. **Rate limiting** (steps 21-22): Create middleware and apply to routes
-7. **Additional admin features** (steps 23-24): Support ticket management and task updates
-8. **User-facing enhancements** (steps 25-26): Notification management and transaction history
+1. ✓ Server starts without errors
+2. ✓ All 11 tables created in PostgreSQL
+3. ✓ Test user registration (auth.js /register)
+4. ✓ Test user login (auth.js /login)
+5. ✓ Test task creation as admin (admin.js POST /tasks)
+6. ✓ Test task submission as user (task.js POST /submit)
+7. ✓ Test withdrawal request (withdrawal.js POST /request)
+8. ✓ Test daily claim (user.js POST /daily-claim)
+9. ✓ Test referral bonus on registration
+10. ✓ Check foreign key constraints work (try deleting referenced record)
 
-This order ensures dependencies are available before use, models exist before routes reference them, and core financial/security features are implemented before convenience features.
+---
+
+## Notes
+
+- **Environment Setup**: User must create PostgreSQL database 'earning_platform' using pgAdmin4 before step 25.
+- **Password**: Update DATABASE_URL in .env with actual PostgreSQL password.
+- **Migration Strategy**: This is a code-level migration. No data migration is included - this assumes starting fresh with PostgreSQL. If data migration is needed, a separate ETL process would be required.
+- **sync({ alter: true })**: Auto-modifies schema on startup during development. Use migrations (sequelize-cli) for production.
+- **Transactions**: Critical operations (withdrawal, daily claim) must use transactions to ensure atomicity that MongoDB provided via single-document updates.
+- **Testing**: Each route should be tested after conversion to ensure business logic remains intact.

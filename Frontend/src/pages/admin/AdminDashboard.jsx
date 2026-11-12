@@ -10,6 +10,7 @@ import {
   ClipboardCheck,
   RefreshCw,
   Settings,
+  BarChart3,
 } from "lucide-react";
 
 export default function AdminDashboard() {
@@ -109,7 +110,7 @@ export default function AdminDashboard() {
   return (
     <>
       <Navbar />
-    <main className="min-h-[calc(100vh-4rem)] bg-[#f3f5f1] text-[#18271f]">
+    <main className="min-h-screen bg-[#f3f5f1] text-[#18271f]">
       <header className="border-b border-[#dce4dc] bg-white">
         <div className="mx-auto flex max-w-360 flex-col gap-5 px-5 py-6 sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-10">
           <div>
@@ -304,6 +305,12 @@ export default function AdminDashboard() {
                   detail: "Fees, bonuses, and limits",
                   to: "/admin/settings",
                   icon: Settings,
+                },
+                {
+                  label: "Financial reports",
+                  detail: "Ledger, referrals, and audit activity",
+                  to: "/admin/reports",
+                  icon: BarChart3,
                 },
               ].map(({ label, detail, to, icon: Icon }) => (
                 <Link

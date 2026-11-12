@@ -22,14 +22,20 @@ export default function Dashboard() {
   // አዲስ የተጨመሩ ስቴቶች (Method እና Account Number)
   const [paymentMethod, setPaymentMethod] = useState("telebirr");
   const [accountNumber, setAccountNumber] = useState("");
+  const [paymentAccounts, setPaymentAccounts] = useState([]);
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [isLoadingBalance, setIsLoadingBalance] = useState(true);
 
   useEffect(() => {
-    API.get("/users/me")
-      .then(({ data }) => setBalance(Number((data.user || data).balance || 0)))
+    Promise.all([API.get("/users/me"), API.get("/users/me/payment-accounts")])
+      .then(([profileResponse, paymentResponse]) => {
+        setBalance(Number((profileResponse.data.user || profileResponse.data).balance || 0));
+        setPaymentAccounts(
+          paymentResponse.data.filter((account) => account.status === "Approved"),
+        );
+      })
       .catch((err) =>
         setMessage(err.response?.data?.message || "Unable to load your balance."),
       )
@@ -53,11 +59,7 @@ export default function Dashboard() {
     }
 
     if (!accountNumber) {
-      setMessage(
-        paymentMethod === "telebirr"
-          ? "እባክዎ የቴሌብር ስልክ ቁጥርዎን ያስገቡ።"
-          : "እባክዎ የባንክ አካውንት ቁጥርዎን ያስገቡ።",
-      );
+      setMessage("Please select an approved payment account in your profile.");
       return;
     }
 
@@ -90,13 +92,13 @@ export default function Dashboard() {
           <div className="absolute -right-12 -top-20 w-64 h-64 rounded-full bg-[#00A86B]/10 blur-3xl pointer-events-none" />
           <div>
             <p className="text-[#00A86B] text-sm font-semibold tracking-wide uppercase mb-3">
-              Your earning dashboard
+              Your earning Homepage
             </p>
             <h1 className="text-3xl md:text-4xl font-bold text-white">
               Welcome back, {user?.name || "User"}!
             </h1>
             <p className="text-slate-300 text-sm md:text-base mt-3 max-w-xl">
-              Complete tasks, invite friends, and keep track of your earnings—all
+              Complete tasks, invite friends, and keep track of your earnings all
               from one place.
             </p>
           </div>
@@ -217,29 +219,45 @@ export default function Dashboard() {
                   }}
                   className="w-full bg-[#0B132B] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-[#00A86B]"
                 >
-                  <option value="telebirr">Telebirr</option>
-                  <option value="bank">Bank Account</option>
+                  {["telebirr", "bank"].map((method) => (
+                    <option
+                      key={method}
+                      value={method}
+                      disabled={!paymentAccounts.some((account) => account.method === method)}
+                    >
+                      {method === "telebirr" ? "Telebirr" : "Bank Account"}
+                      {!paymentAccounts.some((account) => account.method === method)
+                        ? " (not approved)"
+                        : ""}
+                    </option>
+                  ))}
                 </select>
               </div>
 
-              {/* Conditional Input based on Selection */}
               <div>
                 <label className="block text-xs text-slate-300 font-medium mb-1.5">
-                  {paymentMethod === "telebirr"
-                    ? "Telebirr Phone Number"
-                    : "Bank Account Number"}
+                  Approved Payment Account
                 </label>
-                <input
-                  type="text"
+                <select
+                  required
                   value={accountNumber}
                   onChange={(e) => setAccountNumber(e.target.value)}
-                  placeholder={
-                    paymentMethod === "telebirr"
-                      ? "e.g. 0912345678"
-                      : "e.g. 1000123456789"
-                  }
                   className="w-full bg-[#0B132B] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-[#00A86B]"
-                />
+                >
+                  <option value="">account</option>
+                  {paymentAccounts
+                    .filter((account) => account.method === paymentMethod)
+                    .map((account) => (
+                      <option key={account._id} value={account.accountNumber}>
+                        {account.accountName} - {account.accountNumber}
+                      </option>
+                    ))}
+                </select>
+                {!paymentAccounts.length && (
+                  <p className="mt-2 text-xs text-amber-300">
+                    Add a payment account in your profile.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -257,7 +275,7 @@ export default function Dashboard() {
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !paymentAccounts.length}
                 className="w-full bg-[#00A86B] hover:bg-[#00915c] text-white font-bold py-3.5 rounded-xl transition text-sm cursor-pointer shadow-lg shadow-[#00A86B]/20 flex items-center justify-center"
               >
                 {loading ? (

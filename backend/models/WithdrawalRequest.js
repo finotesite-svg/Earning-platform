@@ -6,7 +6,11 @@ const withdrawalRequestSchema = new mongoose.Schema({
   feeAmount: { type: Number, default: 0 },
   paymentMethod: { type: String, enum: ['telebirr', 'bank'], required: true },
   accountNumber: { type: String, required: true },
-  status: { type: String, enum: ['Pending', 'Completed', 'Rejected'], default: 'Pending' }
+  accountName: { type: String, trim: true },
+  status: { type: String, enum: ['Pending', 'Completed', 'Rejected'], default: 'Pending' },
+  paymentReference: { type: String, trim: true },
+  reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  reviewedAt: { type: Date }
 }, { timestamps: true });
 
 module.exports = mongoose.model('WithdrawalRequest', withdrawalRequestSchema);

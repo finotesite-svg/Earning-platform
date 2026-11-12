@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const { jwtSecret } = require("../config/auth");
 
 const authMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -13,7 +14,7 @@ const authMiddleware = async (req, res, next) => {
   try {
     const decoded = jwt.verify(
       token,
-      process.env.JWT_SECRET || "secret_key_here",
+      jwtSecret,
     );
     const user = await User.findById(decoded.userId).select("_id role isActive");
     if (!user || !user.isActive) {

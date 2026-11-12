@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import API from "../../services/api";
+import Navbar from "../../components/Navbar";
 import {
   TrendingUp,
   CreditCard,
@@ -25,8 +25,17 @@ export default function Withdrawals() {
   }, []);
 
   const handleUpdateStatus = async (id, status) => {
+    const paymentReference =
+      status === "Completed"
+        ? window.prompt("Enter the payment reference or transfer ID:")
+        : undefined;
+    if (status === "Completed" && !paymentReference?.trim()) return;
+
     try {
-      const response = await API.patch(`/admin/withdrawals/${id}`, { status });
+      const response = await API.patch(`/admin/withdrawals/${id}`, {
+        status,
+        paymentReference,
+      });
       const updated = response.data.withdrawal || response.data;
       setRequests((currentRequests) =>
         currentRequests.map((request) =>
@@ -41,7 +50,9 @@ export default function Withdrawals() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0B132B] text-slate-100 p-6 md:p-8 space-y-8">
+    <>
+      <Navbar />
+      <main className="min-h-screen space-y-8 bg-[#0B132B] p-6 text-slate-100 md:p-8">
       {/* Header Banner */}
       <div className="bg-[#1C2541] rounded-2xl p-6 border border-slate-700/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
@@ -53,12 +64,6 @@ export default function Withdrawals() {
             Review user payout requests and update their transfer statuses.
           </p>
         </div>
-        <Link
-          to="/admin"
-          className="bg-[#0B132B] hover:bg-slate-800 text-slate-300 px-4 py-2 rounded-xl text-sm border border-slate-700/60 transition"
-        >
-          Back to Dashboard
-        </Link>
       </div>
 
       {/* Withdrawals Table Card */}
@@ -82,6 +87,7 @@ export default function Withdrawals() {
                   <th className="py-3 px-4 font-semibold">User</th>
                   <th className="py-3 px-4 font-semibold">Amount</th>
                   <th className="py-3 px-4 font-semibold">Method & Account</th>
+                  <th className="py-3 px-4 font-semibold">Account Owner</th>
                   <th className="py-3 px-4 font-semibold">Status</th>
                   <th className="py-3 px-4 font-semibold">Date</th>
                   <th className="py-3 px-4 font-semibold text-right">
@@ -112,6 +118,9 @@ export default function Withdrawals() {
                       <span className="text-xs text-slate-400 font-mono">
                         {item.accountNumber}
                       </span>
+                    </td>
+                    <td className="py-4 px-4 text-slate-300">
+                      {item.accountName || "—"}
                     </td>
                     <td className="py-4 px-4">
                       <span
@@ -150,7 +159,11 @@ export default function Withdrawals() {
                       )}
                       {item.status !== "Pending" && (
                         <span className="text-slate-500 text-xs italic">
-                          Completed
+                          {item.status === "Completed"
+                            ? item.paymentReference
+                              ? `Paid: ${item.paymentReference}`
+                              : "Completed"
+                            : "Rejected"}
                         </span>
                       )}
                     </td>
@@ -166,6 +179,7 @@ export default function Withdrawals() {
           </div>
         )}
       </div>
-    </div>
+      </main>
+    </>
   );
 }

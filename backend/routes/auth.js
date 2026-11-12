@@ -9,6 +9,7 @@ const Notification = require('../models/Notification');
 const SystemSetting = require('../models/SystemSetting');
 const LedgerEntry = require('../models/LedgerEntry');
 const { verificationLimiter } = require('../middleware/rateLimitMiddleware');
+const { jwtSecret } = require('../config/auth');
 
 // Register
 router.post('/register', async (req, res) => {
@@ -58,14 +59,15 @@ router.post('/register', async (req, res) => {
       }
     }
 
-    const token = jwt.sign({ userId: newUser._id, role: newUser.role }, process.env.JWT_SECRET || 'secret_key_here', { expiresIn: '7d' });
+    const token = jwt.sign({ userId: newUser._id, role: newUser.role }, jwtSecret, { expiresIn: '7d' });
     res.status(201).json({
       message: 'User registered successfully!',
       token,
       user: { id: newUser._id, name: newUser.name, phone: newUser.phone, balance: newUser.balance, role: newUser.role, referralCode: newUser.referralCode }
     });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Registration error:', error);
+    res.status(500).json({ message: 'Unable to register at this time.' });
   }
 });
 
@@ -78,10 +80,11 @@ router.post('/login', async (req, res) => {
     if (!user || !user.isActive) return res.status(400).json({ message: 'Invalid phone number or password.' });
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ message: 'Invalid phone number or password.' });
-    const token = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_SECRET || 'secret_key_here', { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user._id, role: user.role }, jwtSecret, { expiresIn: '7d' });
     res.json({ message: 'Login successful', token, user: { id: user._id, name: user.name, phone: user.phone, balance: user.balance, role: user.role, referralCode: user.referralCode } });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Login error:', error);
+    res.status(500).json({ message: 'Unable to login at this time.' });
   }
 });
 
@@ -91,15 +94,15 @@ router.post('/send-verification', verificationLimiter, async (req, res) => {
     const { phone } = req.body;
     if (!phone) return res.status(400).json({ message: 'Phone number is required.' });
     const user = await User.findOne({ phone });
-    if (!user) return res.status(404).json({ message: 'User not found.' });
+    if (!user) return res.json({ message: 'If the account exists, a verification code was sent.' });
     const code = String(Math.floor(100000 + Math.random() * 900000));
     user.verificationCode = crypto.createHash('sha256').update(code).digest('hex');
     user.verificationExpiry = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
-    console.log(`Verification code for ${phone}: ${code}`);
     res.json({ message: 'Verification code sent successfully.' });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Verification code error:', error);
+    res.status(500).json({ message: 'Unable to send a verification code.' });
   }
 });
 
@@ -120,7 +123,8 @@ router.post('/verify-phone', async (req, res) => {
     await user.save();
     res.json({ message: 'Phone number verified successfully.' });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Phone verification error:', error);
+    res.status(500).json({ message: 'Unable to verify the phone number.' });
   }
 });
 
@@ -130,15 +134,15 @@ router.post('/forgot-password', async (req, res) => {
     const { phone } = req.body;
     if (!phone) return res.status(400).json({ message: 'Phone number is required.' });
     const user = await User.findOne({ phone });
-    if (!user) return res.status(404).json({ message: 'User not found.' });
+    if (!user) return res.json({ message: 'If the account exists, password reset instructions were sent.' });
     const resetToken = crypto.randomBytes(32).toString('hex');
     user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
     user.resetPasswordExpiry = new Date(Date.now() + 60 * 60 * 1000);
     await user.save();
-    console.log(`Password reset token for ${phone}: ${resetToken}`);
-    res.json({ message: 'Password reset token generated.' });
+    res.json({ message: 'If the account exists, password reset instructions were sent.' });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Password reset request error:', error);
+    res.status(500).json({ message: 'Unable to request a password reset.' });
   }
 });
 
@@ -151,7 +155,7 @@ router.post('/reset-password', async (req, res) => {
     }
     const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
     const user = await User.findOne({ phone });
-    if (!user) return res.status(404).json({ message: 'User not found.' });
+    if (!user) return res.status(400).json({ message: 'Invalid or expired reset token.' });
     if (!user.resetPasswordToken || user.resetPasswordToken !== hashedToken || !user.resetPasswordExpiry || user.resetPasswordExpiry < new Date()) {
       return res.status(400).json({ message: 'Invalid or expired reset token.' });
     }
@@ -161,7 +165,8 @@ router.post('/reset-password', async (req, res) => {
     await user.save();
     res.json({ message: 'Password reset successfully.' });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Password reset error:', error);
+    res.status(500).json({ message: 'Unable to reset the password.' });
   }
 });
 

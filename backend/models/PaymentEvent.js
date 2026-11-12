@@ -9,7 +9,8 @@ const paymentEventSchema = new mongoose.Schema({
     required: true 
   },
   amount: { type: Number, required: true },
-  metadata: { type: mongoose.Schema.Types.Mixed }
+  metadata: { type: mongoose.Schema.Types.Mixed },
+  processedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 
 module.exports = mongoose.model('PaymentEvent', paymentEventSchema);

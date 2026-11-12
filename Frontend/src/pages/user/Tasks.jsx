@@ -88,18 +88,18 @@ export default function Tasks() {
   return (
     <div className="min-h-screen bg-[#0B132B] text-slate-100">
       <Navbar />
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+      <main className="mx-auto max-w-7xl space-y-8 px-4 py-8 pb-24 sm:px-6 md:pb-8">
         <div className="bg-gradient-to-r from-[#1C2541] to-[#0B132B] rounded-3xl p-6 md:p-8 border border-slate-700/60 shadow-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
           <div className="space-y-2">
             <div className="inline-flex items-center space-x-2 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full text-amber-400 text-xs font-semibold">
               <Flame className="w-4 h-4 fill-amber-500 text-amber-500" />
-              <span>{streak} Day Streak</span>
+              <span>{streak} Day Task</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-extrabold text-white">
               Earning Tasks
             </h1>
             <p className="text-slate-400 text-sm">
-              Claim your daily reward and submit proof for available tasks.
+              Claim your daily reward.
             </p>
           </div>
           <div className="bg-[#0B132B]/80 px-6 py-4 rounded-2xl border border-slate-700/60">
@@ -162,7 +162,7 @@ export default function Tasks() {
           {loading ? (
             <p className="text-center py-8 text-slate-400">Loading tasks...</p>
           ) : tasks.length ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {tasks.map((task) => {
                 const taskId = String(task._id || task.id);
                 const submission = submissions.find(
@@ -172,9 +172,16 @@ export default function Tasks() {
                 return (
                   <article
                     key={taskId}
-                    className="bg-[#1C2541] rounded-2xl p-6 border border-slate-700/50 flex flex-col justify-between gap-5"
+                    className="flex h-full flex-col justify-between gap-5 rounded-2xl border border-slate-700/50 bg-[#1C2541] p-4 shadow-xl transition hover:-translate-y-1 hover:border-emerald-500/30 sm:p-6"
                   >
                     <div className="space-y-3">
+                      {task.imageUrl && (
+                        <img
+                          src={task.imageUrl}
+                          alt=""
+                          className="h-40 w-full rounded-xl object-cover"
+                        />
+                      )}
                       <span className="bg-emerald-500/10 text-[#00A86B] border border-emerald-500/20 text-xs font-bold px-3 py-1 rounded-full inline-flex items-center">
                         <Award className="w-3.5 h-3.5 mr-1" />
                         {Number(task.reward).toFixed(2)} ETB

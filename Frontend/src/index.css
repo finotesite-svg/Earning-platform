@@ -1,1 +1,28 @@
 @import "tailwindcss";
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #0b132b;
+}
+
+@media (min-width: 768px) {
+  body.app-with-sidebar #root {
+    padding-left: 16rem;
+  }
+}
+
+@media (max-width: 767px) {
+  body.app-with-sidebar #root {
+    padding-bottom: 5.25rem;
+  }
+}
+
+body.app-with-bottom-nav #root {
+  padding-bottom: 5.25rem;
+}

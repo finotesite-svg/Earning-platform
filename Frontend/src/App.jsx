@@ -19,6 +19,7 @@ import ManageUsers from "./pages/admin/ManageUsers";
 import SubmissionsReview from "./pages/admin/SubmissionsReview";
 import SystemSettings from "./pages/admin/SystemSettings";
 import Withdrawals from "./pages/admin/Withdrawals";
+import Reports from "./pages/admin/Reports";
 import { useAuth } from "./context/useAuth";
 
 const userOnly = (page) => (
@@ -67,6 +68,7 @@ export default function App() {
         />
         <Route path="/admin/settings" element={adminOnly(<SystemSettings />)} />
         <Route path="/admin/withdrawals" element={adminOnly(<Withdrawals />)} />
+        <Route path="/admin/reports" element={adminOnly(<Reports />)} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>

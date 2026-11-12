@@ -14,6 +14,7 @@ const withdrawalLimiter = rateLimit({
   message: "Too many withdrawal requests. Please try again later.",
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.method !== "POST",
 });
 
 const verificationLimiter = rateLimit({

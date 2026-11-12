@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 import {
   LayoutDashboard,
@@ -9,258 +9,188 @@ import {
   ClipboardCheck,
   Settings,
   LogOut,
-  Menu,
-  X,
   Wallet,
   UserCircle,
+  CircleDollarSign,
+  BarChart3,
 } from "lucide-react";
+
+const userLinks = [
+  { to: "/dashboard", label: "Home", icon: LayoutDashboard },
+  { to: "/tasks", label: "Tasks", icon: CheckSquare },
+  { to: "/support", label: "Support", icon: LifeBuoy },
+  { to: "/wallet", label: "Wallet", icon: Wallet },
+  { to: "/referrals", label: "Referrals", icon: Users },
+  { to: "/profile", label: "Profile", icon: UserCircle },
+];
+
+const adminLinks = [
+  { to: "/admin", label: "Overview", icon: LayoutDashboard, end: true },
+  { to: "/admin/tasks", label: "Tasks", icon: CheckSquare },
+  { to: "/admin/users", label: "Users", icon: Users },
+  { to: "/admin/submissions", label: "Submissions", icon: ClipboardCheck },
+  { to: "/admin/settings", label: "Settings", icon: Settings },
+  { to: "/admin/withdrawals", label: "Payouts", icon: Wallet },
+  { to: "/admin/reports", label: "Reports", icon: BarChart3 },
+];
+
+function NavigationLink({ link, onClick, admin = false }) {
+  const Icon = link.icon;
+
+  return (
+    <NavLink
+      to={link.to}
+      end={link.end}
+      onClick={onClick}
+      className={({ isActive }) =>
+        `flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold transition ${isActive
+          ? admin
+            ? "bg-purple-600 text-white shadow-lg shadow-purple-950/20"
+            : "bg-[#00A86B] text-white shadow-lg shadow-emerald-950/20"
+          : "text-slate-400 hover:bg-slate-800/70 hover:text-white"
+        }`
+      }
+    >
+      <Icon className="h-[18px] w-[18px] shrink-0" />
+      <span>{link.label}</span>
+    </NavLink>
+  );
+}
+
+function MobileNavigationLink({ link, admin = false, onClick }) {
+  const Icon = link.icon;
+
+  return (
+    <NavLink
+      to={link.to}
+      end={link.end}
+      onClick={onClick}
+      className={({ isActive }) =>
+        `flex min-w-[4.5rem] shrink-0 flex-col items-center gap-1 rounded-xl px-2 py-2 text-[10px] font-semibold transition md:min-w-0 md:flex-row md:gap-2 md:px-4 md:py-3 md:text-sm ${isActive
+          ? admin
+            ? "bg-purple-600 text-white"
+            : "bg-[#00A86B] text-white"
+          : "text-slate-400 hover:bg-slate-800/70 hover:text-white"
+        }`
+      }
+    >
+      <Icon className="h-5 w-5 shrink-0" />
+      <span className="max-w-[4.5rem] truncate">{link.label}</span>
+    </NavLink>
+  );
+}
 
 export default function Navbar() {
   const { user, logout } = useAuth() || {};
   const navigate = useNavigate();
-  const location = useLocation();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isAdmin = String(user?.role).toLowerCase() === "admin";
+
+  useEffect(() => {
+    document.body.classList.toggle("app-with-sidebar", isAdmin);
+    document.body.classList.toggle("app-with-bottom-nav", Boolean(user));
+    return () => {
+      document.body.classList.remove("app-with-sidebar");
+      document.body.classList.remove("app-with-bottom-nav");
+    };
+  }, [isAdmin, user]);
 
   const handleLogout = () => {
-    if (logout) logout();
+    logout?.();
     navigate("/login");
   };
 
-  const isActive = (path) => location.pathname === path;
+  const brandPath = isAdmin ? "/admin" : "/dashboard";
+  const visibleUserLinks = isAdmin ? [] : userLinks;
 
   return (
-    <nav className="bg-[#1C2541] border-b border-slate-700/50 sticky top-0 z-40 shadow-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16 items-center">
-          {/* Logo & Brand */}
-          <div className="flex items-center space-x-8">
-            <Link
-              to={user?.role === "admin" ? "/admin" : "/dashboard"}
-              className="text-xl font-bold text-white flex items-center"
-            >
-              <span className="w-9 h-9 bg-emerald-500/10 border border-emerald-500/20 text-[#00A86B] rounded-xl flex items-center justify-center mr-2.5 font-extrabold shadow-inner">
-                EP
+    <>
+      <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-slate-700/60 bg-[#1C2541] px-4 shadow-md md:hidden">
+        <Link
+          to={brandPath}
+          className="flex items-center gap-2.5 text-lg font-bold text-white"
+        >
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 font-extrabold text-[#00A86B]">
+            MA
+          </span>
+          <span className="truncate">Master business</span>
+        </Link>
+      </header>
+
+      {isAdmin && (
+        <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 flex-col border-r border-slate-700/60 bg-[#1C2541] md:flex">
+          <div className="border-b border-slate-700/60 p-5">
+            <Link to={brandPath} className="flex items-center gap-3 text-lg font-bold text-white">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 font-extrabold text-[#00A86B]">
+                MA
               </span>
-              Earning Platform
+              <span>Master business</span>
             </Link>
-
-            {/* Desktop Navigation Links */}
-            <div className="hidden md:flex space-x-1">
-              <Link
-                to="/dashboard"
-                className={`px-3.5 py-2 rounded-xl text-sm font-medium transition flex items-center ${isActive("/dashboard") ? "bg-[#00A86B] text-white shadow" : "text-slate-300 hover:text-white hover:bg-slate-800/40"}`}
-              >
-                <LayoutDashboard className="w-4 h-4 mr-2" /> Dashboard
-              </Link>
-              <Link
-                to="/tasks"
-                className={`px-3.5 py-2 rounded-xl text-sm font-medium transition flex items-center ${isActive("/tasks") ? "bg-[#00A86B] text-white shadow" : "text-slate-300 hover:text-white hover:bg-slate-800/40"}`}
-              >
-                <CheckSquare className="w-4 h-4 mr-2" /> Tasks
-              </Link>
-              <Link
-                to="/support"
-                className={`px-3.5 py-2 rounded-xl text-sm font-medium transition flex items-center ${isActive("/support") ? "bg-[#00A86B] text-white shadow" : "text-slate-300 hover:text-white hover:bg-slate-800/40"}`}
-              >
-                <LifeBuoy className="w-4 h-4 mr-2" /> Support
-              </Link>
-              <Link
-                to="/wallet"
-                className={`px-3.5 py-2 rounded-xl text-sm font-medium transition flex items-center ${isActive("/wallet") ? "bg-[#00A86B] text-white shadow" : "text-slate-300 hover:text-white hover:bg-slate-800/40"}`}
-              >
-                <Wallet className="w-4 h-4 mr-2" /> Wallet
-              </Link>
-              <Link
-                to="/referrals"
-                className={`px-3.5 py-2 rounded-xl text-sm font-medium transition flex items-center ${isActive("/referrals") ? "bg-[#00A86B] text-white shadow" : "text-slate-300 hover:text-white hover:bg-slate-800/40"}`}
-              >
-                <Users className="w-4 h-4 mr-2" /> Referrals
-              </Link>
-              <Link
-                to="/profile"
-                className={`px-3.5 py-2 rounded-xl text-sm font-medium transition flex items-center ${isActive("/profile") ? "bg-[#00A86B] text-white shadow" : "text-slate-300 hover:text-white hover:bg-slate-800/40"}`}
-              >
-                <UserCircle className="w-4 h-4 mr-2" /> Profile
-              </Link>
-
-              {/* Admin Links */}
-              {user?.role === "admin" && <div className="flex items-center space-x-1 pl-4 border-l border-slate-700/60 ml-2">
-                <Link
-                  to="/admin"
-                  className={`px-3 py-2 rounded-xl text-sm font-medium transition ${isActive("/admin") ? "bg-purple-600 text-white shadow" : "text-slate-400 hover:text-white hover:bg-slate-800/40"}`}
-                >
-                  Admin
-                </Link>
-                <Link
-                  to="/admin/tasks"
-                  className={`px-3 py-2 rounded-xl text-sm font-medium transition ${isActive("/admin/tasks") ? "bg-purple-600 text-white shadow" : "text-slate-400 hover:text-white hover:bg-slate-800/40"}`}
-                >
-                  Tasks
-                </Link>
-                <Link
-                  to="/admin/users"
-                  className={`px-3 py-2 rounded-xl text-sm font-medium transition flex items-center ${isActive("/admin/users") ? "bg-purple-600 text-white shadow" : "text-slate-400 hover:text-white hover:bg-slate-800/40"}`}
-                >
-                  <Users className="w-4 h-4 mr-1.5" /> Users
-                </Link>
-                <Link
-                  to="/admin/submissions"
-                  className={`px-3 py-2 rounded-xl text-sm font-medium transition flex items-center ${isActive("/admin/submissions") ? "bg-purple-600 text-white shadow" : "text-slate-400 hover:text-white hover:bg-slate-800/40"}`}
-                >
-                  <ClipboardCheck className="w-4 h-4 mr-1.5" /> Submissions
-                </Link>
-                <Link
-                  to="/admin/settings"
-                  className={`px-3 py-2 rounded-xl text-sm font-medium transition flex items-center ${isActive("/admin/settings") ? "bg-purple-600 text-white shadow" : "text-slate-400 hover:text-white hover:bg-slate-800/40"}`}
-                >
-                  <Settings className="w-4 h-4 mr-1.5" /> Settings
-                </Link>
-                <Link
-                  to="/admin/withdrawals"
-                  className={`px-3 py-2 rounded-xl text-sm font-medium transition ${isActive("/admin/withdrawals") ? "bg-purple-600 text-white shadow" : "text-slate-400 hover:text-white hover:bg-slate-800/40"}`}
-                >
-                  Payouts
-                </Link>
-              </div>}
-            </div>
           </div>
 
-          {/* User Profile & Logout (Desktop) */}
-          <div className="hidden md:flex items-center space-x-4">
-            <div className="flex items-center bg-[#0B132B] px-3.5 py-2 rounded-xl border border-slate-700/60 text-sm text-slate-300">
-              <span className="font-semibold text-white">
+          <nav className="flex-1 space-y-1 overflow-y-auto p-4" aria-label="Primary navigation">
+            {visibleUserLinks.length > 0 && (
+              <>
+                {/* <p className="px-3 pb-2 pt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                Workspace
+              </p> */}
+                {visibleUserLinks.map((link) => (
+                  <NavigationLink key={link.to} link={link} />
+                ))}
+              </>
+            )}
+
+            {user?.role === "admin" && (
+              <>
+                <p className="border-t border-slate-700/60 px-3 pb-2 pt-6 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                  Admin
+                </p>
+                {adminLinks.map((link) => (
+                  <NavigationLink key={link.to} link={link} admin />
+                ))}
+              </>
+            )}
+          </nav>
+
+          <div className="border-t border-slate-700/60 p-4">
+            <div className="mb-3 flex items-center gap-3 rounded-xl bg-[#0B132B]/70 px-3 py-2.5">
+              <CircleDollarSign className="h-5 w-5 shrink-0 text-[#00A86B]" />
+              <span className="truncate text-xs font-semibold text-slate-300">
                 {user?.phone || "Account"}
               </span>
             </div>
             <button
+              type="button"
               onClick={handleLogout}
-              className="bg-red-500/10 hover:bg-red-500/20 text-red-400 p-2.5 rounded-xl transition cursor-pointer border border-red-500/20"
-              title="Logout"
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2.5 text-sm font-semibold text-red-400 transition hover:bg-red-500/20"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="h-4 w-4" />
+              Logout
             </button>
           </div>
-
-          {/* Mobile Menu Hamburger Button */}
-          <div className="md:hidden flex items-center">
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="text-slate-300 hover:text-white p-2 rounded-xl bg-slate-800/50"
-            >
-              {mobileMenuOpen ? (
-                <X className="w-6 h-6" />
-              ) : (
-                <Menu className="w-6 h-6" />
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile Menu Drawer Overlay */}
-      {mobileMenuOpen && (
-        <div className="md:hidden bg-[#0B132B] border-b border-slate-700/60 px-4 pt-2 pb-6 space-y-2 animate-in slide-in-from-top-2 duration-200">
-          <Link
-            to="/dashboard"
-            onClick={() => setMobileMenuOpen(false)}
-            className={`block px-4 py-3 rounded-xl text-sm font-semibold ${isActive("/dashboard") ? "bg-[#00A86B] text-white" : "text-slate-300"}`}
-          >
-            Dashboard
-          </Link>
-          <Link
-            to="/tasks"
-            onClick={() => setMobileMenuOpen(false)}
-            className={`block px-4 py-3 rounded-xl text-sm font-semibold ${isActive("/tasks") ? "bg-[#00A86B] text-white" : "text-slate-300"}`}
-          >
-            Tasks & Activities
-          </Link>
-          <Link
-            to="/support"
-            onClick={() => setMobileMenuOpen(false)}
-            className={`block px-4 py-3 rounded-xl text-sm font-semibold ${isActive("/support") ? "bg-[#00A86B] text-white" : "text-slate-300"}`}
-          >
-            Support
-          </Link>
-          <Link
-            to="/wallet"
-            onClick={() => setMobileMenuOpen(false)}
-            className={`block px-4 py-3 rounded-xl text-sm font-semibold ${isActive("/wallet") ? "bg-[#00A86B] text-white" : "text-slate-300"}`}
-          >
-            Wallet
-          </Link>
-          <Link
-            to="/profile"
-            onClick={() => setMobileMenuOpen(false)}
-            className={`block px-4 py-3 rounded-xl text-sm font-semibold ${isActive("/profile") ? "bg-[#00A86B] text-white" : "text-slate-300"}`}
-          >
-            Profile
-          </Link>
-          <Link
-            to="/referrals"
-            onClick={() => setMobileMenuOpen(false)}
-            className={`block px-4 py-3 rounded-xl text-sm font-semibold ${isActive("/referrals") ? "bg-[#00A86B] text-white" : "text-slate-300"}`}
-          >
-            Referrals
-          </Link>
-          <div className="pt-2 border-t border-slate-800 space-y-2">
-            {user?.role === "admin" && <>
-            <Link
-              to="/admin"
-              onClick={() => setMobileMenuOpen(false)}
-              className={`block px-4 py-2.5 rounded-xl text-xs font-semibold ${isActive("/admin") ? "bg-purple-600 text-white" : "text-slate-400"}`}
-            >
-              Admin Dashboard
-            </Link>
-            <Link
-              to="/admin/tasks"
-              onClick={() => setMobileMenuOpen(false)}
-              className={`block px-4 py-2.5 rounded-xl text-xs font-semibold ${isActive("/admin/tasks") ? "bg-purple-600 text-white" : "text-slate-400"}`}
-            >
-              Admin Tasks
-            </Link>
-            <Link
-              to="/admin/users"
-              onClick={() => setMobileMenuOpen(false)}
-              className={`block px-4 py-2.5 rounded-xl text-xs font-semibold ${isActive("/admin/users") ? "bg-purple-600 text-white" : "text-slate-400"}`}
-            >
-              Admin Users
-            </Link>
-            <Link
-              to="/admin/submissions"
-              onClick={() => setMobileMenuOpen(false)}
-              className={`block px-4 py-2.5 rounded-xl text-xs font-semibold ${isActive("/admin/submissions") ? "bg-purple-600 text-white" : "text-slate-400"}`}
-            >
-              Admin Submissions
-            </Link>
-            <Link
-              to="/admin/settings"
-              onClick={() => setMobileMenuOpen(false)}
-              className={`block px-4 py-2.5 rounded-xl text-xs font-semibold ${isActive("/admin/settings") ? "bg-purple-600 text-white" : "text-slate-400"}`}
-            >
-              Admin Settings
-            </Link>
-            <Link
-              to="/admin/withdrawals"
-              onClick={() => setMobileMenuOpen(false)}
-              className={`block px-4 py-2.5 rounded-xl text-xs font-semibold ${isActive("/admin/withdrawals") ? "bg-purple-600 text-white" : "text-slate-400"}`}
-            >
-              Admin Payouts
-            </Link>
-            </>}
-          </div>
-          <div className="pt-4 border-t border-slate-800 flex justify-between items-center">
-            <span className="text-xs text-slate-400">
-              {user?.phone || "Account"}
-            </span>
-            <button
-              onClick={handleLogout}
-              className="bg-red-500/10 text-red-400 px-4 py-2 rounded-xl text-xs font-semibold flex items-center"
-            >
-              <LogOut className="w-3.5 h-3.5 mr-1.5" /> Logout
-            </button>
-          </div>
-        </div>
+        </aside>
       )}
-    </nav>
+
+      <nav
+        className={`fixed inset-x-0 bottom-0 z-40 flex gap-1 overflow-x-auto border-t border-slate-700/60 bg-[#1C2541]/95 px-2 pb-[env(safe-area-inset-bottom)] pt-2 shadow-2xl backdrop-blur md:justify-center md:px-6 md:py-2 ${isAdmin ? "md:hidden" : ""
+          }`}
+        aria-label="Mobile navigation"
+      >
+        {visibleUserLinks.map((link) => (
+          <MobileNavigationLink key={link.to} link={link} />
+        ))}
+        {isAdmin &&
+          adminLinks.map((link) => (
+            <MobileNavigationLink key={link.to} link={link} admin />
+          ))}
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="flex min-w-[4.5rem] shrink-0 flex-col items-center gap-1 rounded-xl px-2 py-2 text-[10px] font-semibold text-red-400 transition hover:bg-red-500/10 md:min-w-0 md:flex-row md:gap-2 md:px-4 md:py-3 md:text-sm"
+        >
+          <LogOut className="h-5 w-5" />
+          <span>Logout</span>
+        </button>
+      </nav>
+    </>
   );
 }

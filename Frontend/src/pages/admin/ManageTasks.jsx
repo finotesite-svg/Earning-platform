@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import API from "../../services/api";
+import Navbar from "../../components/Navbar";
 import {
   CheckSquare,
   Plus,
@@ -17,6 +17,7 @@ export default function ManageTasks() {
   const [title, setTitle] = useState("");
   const [reward, setReward] = useState("");
   const [link, setLink] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -49,15 +50,34 @@ export default function ManageTasks() {
         description: "",
         reward: Number(reward),
         link,
+        imageUrl,
       });
       const newTask = response.data.task || response.data;
       setTasks((currentTasks) => [newTask, ...currentTasks]);
       setTitle("");
       setReward("");
       setLink("");
+      setImageUrl("");
     } catch (err) {
       setError(err.response?.data?.message || "Unable to create task.");
     }
+  };
+
+  const handleImageChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setImageUrl("");
+      return;
+    }
+    if (!file.type.startsWith("image/") || file.size > 2 * 1024 * 1024) {
+      setError("Choose an image file smaller than 2 MB.");
+      event.target.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setImageUrl(String(reader.result));
+    reader.onerror = () => setError("Unable to read the selected image.");
+    reader.readAsDataURL(file);
   };
 
   const handleDeleteTask = async (id) => {
@@ -72,7 +92,9 @@ export default function ManageTasks() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0B132B] text-slate-100 p-6 md:p-8 space-y-8">
+    <>
+      <Navbar />
+      <main className="min-h-screen space-y-8 bg-[#0B132B] p-6 text-slate-100 md:p-8">
       {/* Header Banner */}
       <div className="bg-[#1C2541] rounded-2xl p-6 border border-slate-700/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
@@ -84,12 +106,6 @@ export default function ManageTasks() {
             Create new earning tasks or delete outdated tasks for users.
           </p>
         </div>
-        <Link
-          to="/admin"
-          className="bg-[#0B132B] hover:bg-slate-800 text-slate-300 px-4 py-2 rounded-xl text-sm border border-slate-700/60 transition"
-        >
-          Back to Dashboard
-        </Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -147,6 +163,25 @@ export default function ManageTasks() {
               />
             </div>
 
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Task Image (optional, max 2 MB)
+              </label>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                onChange={handleImageChange}
+                className="w-full rounded-xl border border-slate-700/60 bg-[#0B132B] px-4 py-3 text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-[#00A86B] file:px-3 file:py-2 file:font-semibold file:text-white"
+              />
+              {imageUrl && (
+                <img
+                  src={imageUrl}
+                  alt="Selected task preview"
+                  className="mt-3 h-24 w-full rounded-xl object-cover"
+                />
+              )}
+            </div>
+
             <button
               type="submit"
               className="w-full bg-[#00A86B] hover:bg-[#00915c] text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center shadow-lg shadow-[#00A86B]/20 cursor-pointer"
@@ -174,6 +209,13 @@ export default function ManageTasks() {
                 className="bg-[#0B132B] p-4 rounded-xl border border-slate-700/60 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
               >
                 <div className="space-y-1">
+                  {task.imageUrl && (
+                    <img
+                      src={task.imageUrl}
+                      alt=""
+                      className="mb-3 h-20 w-32 rounded-lg object-cover"
+                    />
+                  )}
                   <h3 className="font-bold text-white text-base">
                     {task.title}
                   </h3>
@@ -199,6 +241,7 @@ export default function ManageTasks() {
           </div>
         </div>
       </div>
-    </div>
+      </main>
+    </>
   );
 }
